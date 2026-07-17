@@ -66,6 +66,7 @@ class ExamSession(Base):
     id = Column(Integer, primary_key=True, index=True)
     exam_id = Column(Integer, ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    session_token = Column(String, unique=True, index=True, nullable=True)
     start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     end_time = Column(DateTime, nullable=False)
     status = Column(String, nullable=False, default="active")  # 'active', 'submitted', 'timed_out'
@@ -76,11 +77,12 @@ class ExamSession(Base):
     # Relationships
     exam = relationship("Exam", back_populates="sessions")
     student = relationship("User", back_populates="sessions")
-    proctor_logs = relationship("ProctoringLog", back_populates="session", cascade="all, delete-orphan")
+    proctor_logs = relationship("ProctorEvent", back_populates="session", cascade="all, delete-orphan")
     subjective_evaluations = relationship("SubjectiveEvaluation", back_populates="session", cascade="all, delete-orphan")
+    question_results = relationship("QuestionResult", back_populates="session", cascade="all, delete-orphan")
 
-class ProctoringLog(Base):
-    __tablename__ = "proctoring_logs"
+class ProctorEvent(Base):
+    __tablename__ = "proctor_events"
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("exam_sessions.id", ondelete="CASCADE"), nullable=False)
@@ -91,6 +93,21 @@ class ProctoringLog(Base):
 
     # Relationships
     session = relationship("ExamSession", back_populates="proctor_logs")
+
+class QuestionResult(Base):
+    __tablename__ = "question_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("exam_sessions.id", ondelete="CASCADE"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
+    student_answer = Column(Text, nullable=True)
+    score = Column(Float, nullable=False, default=0.0)
+    is_correct = Column(Boolean, default=False)
+
+    # Relationships
+    session = relationship("ExamSession", back_populates="question_results")
+    question = relationship("Question")
+
 
 class SubjectiveEvaluation(Base):
     __tablename__ = "subjective_evaluations"

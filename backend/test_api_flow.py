@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 os.environ["DATABASE_URL"] = "sqlite:///./test_exam_platform.db"
 
 from app.database import SessionLocal, Base, engine
-from app.models import User, Subject, Question, Exam, ExamSession, SubjectiveEvaluation, ProctoringLog
-from app.routers.auth import get_password_hash
+from app.models import User, Subject, Question, Exam, ExamSession, SubjectiveEvaluation, ProctorEvent
+from app.routers.auth import get_current_user, get_password_hash
 from app.routers.exams import run_ai_evaluations, recalculate_session_score
 from app.services.cv_proctor import analyze_snapshot
 
@@ -119,7 +119,7 @@ async def run_test():
         # 6. Log Proctoring Browser Events
         print("\n6. Simulating Proctoring Browser Events...")
         # Simulate tab switch (penalty: 10)
-        log1 = ProctoringLog(
+        log1 = ProctorEvent(
             session_id=session.id,
             event_type="tab_switch",
             timestamp=datetime.utcnow(),
@@ -206,6 +206,7 @@ async def run_test():
 
     finally:
         db.close()
+        engine.dispose()
         # Clean up database file
         if os.path.exists("test_exam_platform.db"):
             os.remove("test_exam_platform.db")

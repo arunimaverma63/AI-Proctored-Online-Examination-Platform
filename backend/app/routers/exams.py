@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
@@ -8,9 +8,10 @@ import os
 import uuid
 import base64
 from typing import List, Dict, Any
+from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import User, Subject, Question, Exam, ExamSession, SubjectiveEvaluation, ProctoringLog
+from app.models import User, Subject, Question, Exam, ExamSession, SubjectiveEvaluation, ProctorEvent, QuestionResult
 from app.schemas import (
     SubjectCreate, SubjectResponse, QuestionCreate, QuestionAdminResponse,
     ExamCreate, ExamResponse, ExamSessionResponse, ExamSessionSaveAnswers,
@@ -21,6 +22,14 @@ from app.services.ai_evaluation import evaluate_subjective_answer
 from app.config import settings
 
 router = APIRouter(tags=["exams"])
+
+def verify_session(session_id: int, session_token: str, current_user: User, db: Session) -> ExamSession:
+    session = db.query(ExamSession).filter(ExamSession.id == session_id, ExamSession.student_id == current_user.id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Exam session not found")
+    if session.session_token and session.session_token != session_token:
+        raise HTTPException(status_code=403, detail="Invalid session token. Only one active session is allowed.")
+    return session
 
 # ----------------- Subject Routes -----------------
 @router.get("/subjects", response_model=List[SubjectResponse])
@@ -213,6 +222,11 @@ def start_exam_session(id: int, current_user: User = Depends(get_current_user), 
     if session:
         if session.status != "active":
             raise HTTPException(status_code=400, detail=f"Exam session already completed with status: {session.status}")
+        # Make sure session_token exists on resume
+        if not session.session_token:
+            session.session_token = str(uuid.uuid4())
+            db.commit()
+            db.refresh(session)
     else:
         # Create new active exam session
         end_time = now + timedelta(minutes=exam.duration_minutes)
@@ -223,6 +237,7 @@ def start_exam_session(id: int, current_user: User = Depends(get_current_user), 
         session = ExamSession(
             exam_id=exam.id,
             student_id=current_user.id,
+            session_token=str(uuid.uuid4()),
             start_time=now,
             end_time=end_time,
             status="active",
@@ -233,10 +248,11 @@ def start_exam_session(id: int, current_user: User = Depends(get_current_user), 
         db.commit()
         db.refresh(session)
         
+    # Schedule the auto-submit job via APScheduler
+    from app.services.scheduler import schedule_auto_submit
+    schedule_auto_submit(session.id, session.end_time)
+        
     # Generate/Fetch questions
-    # Note: To ensure consistent paper questions during resume, we can seed random by student ID or store the questions order.
-    # In SQLite, we can just grab all questions under the subject and shuffle them.
-    # Let's seed random using the session ID to make it deterministic for this specific session!
     questions = db.query(Question).filter(Question.subject_id == exam.subject_id).all()
     
     # Select randomized questions
@@ -268,36 +284,105 @@ def start_exam_session(id: int, current_user: User = Depends(get_current_user), 
         
     return {
         "session_id": session.id,
+        "session_token": session.session_token,
         "duration_minutes": exam.duration_minutes,
         "end_time": session.end_time.replace(tzinfo=timezone.utc),
         "questions": formatted_questions,
         "answers": json.loads(session.answers or "{}")
     }
 
+
+class AnswerSubmitPayload(BaseModel):
+    question_id: int
+    answer: Any
+
 @router.post("/student/session/{session_id}/save")
-def save_exam_answers(session_id: int, payload: ExamSessionSaveAnswers, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    session = db.query(ExamSession).filter(ExamSession.id == session_id, ExamSession.student_id == current_user.id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Exam session not found")
+def save_exam_answers(
+    session_id: int, 
+    payload: ExamSessionSaveAnswers, 
+    background_tasks: BackgroundTasks,
+    x_session_token: str = Header(None),
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    session = verify_session(session_id, x_session_token, current_user, db)
     if session.status != "active":
         raise HTTPException(status_code=400, detail="Cannot edit a submitted/timed-out session")
+        
+    now = datetime.utcnow()
+    if now > session.end_time:
+        session.status = "timed_out"
+        db.commit()
+        background_tasks.add_task(run_ai_evaluations, session_id, db)
+        raise HTTPException(status_code=408, detail="Exam time has expired. Your answers were auto-submitted.")
         
     session.answers = json.dumps(payload.answers)
     db.commit()
     return {"message": "Answers saved successfully"}
 
-@router.post("/student/session/{session_id}/upload-handwritten")
-async def upload_handwritten_image(
+@router.post("/student/session/{session_id}/submit-answer")
+def submit_single_answer(
     session_id: int,
-    file: UploadFile = File(...),
+    payload: AnswerSubmitPayload,
+    background_tasks: BackgroundTasks,
+    x_session_token: str = Header(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    session = db.query(ExamSession).filter(ExamSession.id == session_id, ExamSession.student_id == current_user.id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    session = verify_session(session_id, x_session_token, current_user, db)
+    if session.status != "active":
+        raise HTTPException(status_code=400, detail="Cannot save answers for an inactive session")
+        
+    now = datetime.utcnow()
+    if now > session.end_time:
+        session.status = "timed_out"
+        db.commit()
+        background_tasks.add_task(run_ai_evaluations, session_id, db)
+        raise HTTPException(status_code=408, detail="Exam time has expired. Your answers were auto-submitted.")
+        
+    # Find the question to make sure it's valid
+    q = db.query(Question).filter(Question.id == payload.question_id, Question.subject_id == session.exam.subject_id).first()
+    if not q:
+        raise HTTPException(status_code=404, detail="Question not found in this exam")
+        
+    # Word count validation for text answers
+    word_count = 0
+    if q.type in ["short", "long"]:
+        ans_text = str(payload.answer or "").strip()
+        word_count = len(ans_text.split())
+        if q.type == "short" and word_count > 150:
+            raise HTTPException(status_code=400, detail=f"Short answer exceeds 150 words limit. Current: {word_count}")
+        if q.type == "long" and word_count > 1000:
+            raise HTTPException(status_code=400, detail=f"Long answer exceeds 1000 words limit. Current: {word_count}")
+            
+    # Load existing answers
+    answers = json.loads(session.answers or "{}")
+    answers[str(payload.question_id)] = payload.answer
+    session.answers = json.dumps(answers)
+    db.commit()
+    
+    return {
+        "status": "saved",
+        "question_id": payload.question_id,
+        "word_count": word_count
+    }
+
+@router.post("/student/session/{session_id}/upload-handwritten")
+async def upload_handwritten_image(
+    session_id: int,
+    question_id: int,
+    file: UploadFile = File(...),
+    x_session_token: str = Header(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session = verify_session(session_id, x_session_token, current_user, db)
     if session.status != "active":
         raise HTTPException(status_code=400, detail="Session is not active")
+        
+    now = datetime.utcnow()
+    if now > session.end_time:
+        raise HTTPException(status_code=408, detail="Exam time has expired. Cannot upload images.")
         
     ext = os.path.splitext(file.filename)[1]
     if ext.lower() not in [".jpg", ".jpeg", ".png"]:
@@ -309,9 +394,30 @@ async def upload_handwritten_image(
     with open(filepath, "wb") as buffer:
         buffer.write(await file.read())
         
-    # Return path relative to server root
+    # Generate thumbnail 150x150
+    from PIL import Image
+    thumb_filename = f"handwritten_{session_id}_{uuid.uuid4().hex}_thumb{ext}"
+    thumb_filepath = os.path.join(settings.UPLOAD_DIR, thumb_filename)
+    
+    try:
+        with Image.open(filepath) as img:
+            img.thumbnail((150, 150))
+            img.save(thumb_filepath)
+        thumb_url = f"/static/uploads/{thumb_filename}"
+    except Exception as img_err:
+        print(f"Failed to generate thumbnail: {img_err}")
+        thumb_url = f"/static/uploads/{filename}" # Fallback
+        
     file_url = f"/static/uploads/{filename}"
-    return {"image_url": file_url}
+    
+    # Immediately store original path in answers dict
+    answers = json.loads(session.answers or "{}")
+    answers[str(question_id)] = file_url
+    session.answers = json.dumps(answers)
+    db.commit()
+    
+    return {"image_url": file_url, "thumbnail_url": thumb_url}
+
 
 # Background Grading Task
 async def run_ai_evaluations(session_id: int, db_session: Session):
@@ -409,29 +515,29 @@ def recalculate_session_score(session_id: int, db: Session):
     
     # Fetch questions
     questions = db.query(Question).filter(Question.subject_id == exam.subject_id).all()
-    q_dict = {str(q.id): q for q in questions}
     
     score = 0.0
     
-    for q_id_str, ans in answers.items():
-        q = q_dict.get(q_id_str)
-        if not q:
-            continue
-            
+    for q in questions:
+        ans = answers.get(str(q.id))
+        is_correct = False
+        q_score = 0.0
+        
         if q.type == "mcq":
-            if str(ans).strip().lower() == str(q.correct_answer).strip().lower():
-                score += q.points
+            if ans and str(ans).strip().lower() == str(q.correct_answer).strip().lower():
+                q_score = q.points
+                is_correct = True
             elif ans:  # Wrong answer penalty
-                score -= exam.negative_marking_val
+                q_score = -exam.negative_marking_val
         elif q.type == "multiselect":
-            # ans is list of selected keys, correct_answer is json list of correct keys
             try:
                 correct_list = json.loads(q.correct_answer)
-                ans_list = list(ans)
-                if set(correct_list) == set(ans_list):
-                    score += q.points
+                ans_list = list(ans) if ans else []
+                if ans_list and set(correct_list) == set(ans_list):
+                    q_score = q.points
+                    is_correct = True
                 elif ans_list:
-                    score -= exam.negative_marking_val
+                    q_score = -exam.negative_marking_val
             except Exception:
                 pass
         elif q.type in ["short", "long", "image"]:
@@ -441,8 +547,31 @@ def recalculate_session_score(session_id: int, db: Session):
                 SubjectiveEvaluation.question_id == q.id
             ).first()
             if sub_eval:
-                score += sub_eval.examiner_score if sub_eval.examiner_score is not None else (sub_eval.ai_score or 0.0)
+                q_score = sub_eval.examiner_score if sub_eval.examiner_score is not None else (sub_eval.ai_score or 0.0)
+                is_correct = (q_score >= q.points * 0.5)
                 
+        score += q_score
+        
+        # Save to QuestionResult
+        q_res = db.query(QuestionResult).filter(
+            QuestionResult.session_id == session_id,
+            QuestionResult.question_id == q.id
+        ).first()
+        if not q_res:
+            q_res = QuestionResult(session_id=session_id, question_id=q.id)
+            db.add(q_res)
+            
+        if ans is not None:
+            if isinstance(ans, (list, dict)):
+                q_res.student_answer = json.dumps(ans)
+            else:
+                q_res.student_answer = str(ans)
+        else:
+            q_res.student_answer = None
+            
+        q_res.score = q_score
+        q_res.is_correct = is_correct
+        
     session.final_score = max(score, 0.0)  # Total score cannot be negative
     db.commit()
 
@@ -461,6 +590,10 @@ def submit_exam_session(
         # Check if already submitted
         return {"message": "Exam session was already submitted", "session_id": session_id}
         
+    # Cancel the auto-submit scheduler job
+    from app.services.scheduler import cancel_auto_submit
+    cancel_auto_submit(session_id)
+        
     # Check timeout auto-submit
     now = datetime.utcnow()
     if now > session.end_time:
@@ -474,6 +607,7 @@ def submit_exam_session(
     background_tasks.add_task(run_ai_evaluations, session_id, db)
     
     return {"message": "Exam submitted successfully", "session_id": session_id}
+
 
 @router.get("/admin/dashboard-stats", dependencies=[Depends(verify_role(["admin", "examiner"]))])
 def get_admin_dashboard_stats(db: Session = Depends(get_db)):
@@ -545,7 +679,7 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
         })
         
     # 7. Recent proctoring alerts
-    recent_logs = db.query(ProctoringLog).order_by(ProctoringLog.timestamp.desc()).limit(6).all()
+    recent_logs = db.query(ProctorEvent).order_by(ProctorEvent.timestamp.desc()).limit(6).all()
     alerts_data = []
     for log in recent_logs:
         alerts_data.append({
@@ -610,24 +744,24 @@ def get_admin_dashboard_stats(db: Session = Depends(get_db)):
     total_sessions = db.query(ExamSession).count()
     if total_sessions > 0:
         face_missing_count = db.query(ExamSession).filter(
-            ExamSession.proctor_logs.any(ProctoringLog.event_type.like("%face_missing%"))
+            ExamSession.proctor_logs.any(ProctorEvent.event_type.like("%face_missing%"))
         ).count()
         face_present_pct = round(((total_sessions - face_missing_count) / total_sessions) * 100)
 
         gaze_away_count = db.query(ExamSession).filter(
-            ExamSession.proctor_logs.any(ProctoringLog.event_type.like("%gaze_away%"))
+            ExamSession.proctor_logs.any(ProctorEvent.event_type.like("%gaze_away%"))
         ).count()
         gaze_on_screen_pct = round(((total_sessions - gaze_away_count) / total_sessions) * 100)
 
         tab_switch_count = db.query(ExamSession).filter(
             ExamSession.proctor_logs.any(
-                (ProctoringLog.event_type.like("%tab_switch%")) | (ProctoringLog.event_type.like("%window_blur%"))
+                (ProctorEvent.event_type.like("%tab_switch%")) | (ProctorEvent.event_type.like("%window_blur%"))
             )
         ).count()
         no_tab_switches_pct = round(((total_sessions - tab_switch_count) / total_sessions) * 100)
 
         multiple_faces_count = db.query(ExamSession).filter(
-            ExamSession.proctor_logs.any(ProctoringLog.event_type.like("%multiple_faces%"))
+            ExamSession.proctor_logs.any(ProctorEvent.event_type.like("%multiple_faces%"))
         ).count()
         single_face_pct = round(((total_sessions - multiple_faces_count) / total_sessions) * 100)
 

@@ -9,13 +9,17 @@ const api = axios.create({
   },
 });
 
-// Interceptor to add JWT authorization token to every request
+// Interceptor to add JWT authorization token and X-Session-Token to every request
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      }
+      const sessionToken = localStorage.getItem('session_token');
+      if (sessionToken) {
+        config.headers['X-Session-Token'] = sessionToken;
       }
     }
     return config;
@@ -62,10 +66,12 @@ export const studentApi = {
   startExam: (examId) => api.post(`/student/exams/${examId}/start`),
   saveAnswers: (sessionId, answers) => 
     api.post(`/student/session/${sessionId}/save`, { answers }),
-  uploadHandwritten: (sessionId, file) => {
+  submitSingleAnswer: (sessionId, questionId, answer) =>
+    api.post(`/student/session/${sessionId}/submit-answer`, { question_id: questionId, answer }),
+  uploadHandwritten: (sessionId, questionId, file) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post(`/student/session/${sessionId}/upload-handwritten`, formData, {
+    return api.post(`/student/session/${sessionId}/upload-handwritten?question_id=${questionId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

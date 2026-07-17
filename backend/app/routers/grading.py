@@ -6,7 +6,7 @@ import json
 
 
 from app.database import get_db
-from app.models import ExamSession, SubjectiveEvaluation, Question, User, ProctoringLog
+from app.models import ExamSession, SubjectiveEvaluation, Question, User, ProctorEvent
 from app.schemas import ExaminerGradeSubmit, SubjectiveEvaluationResponse
 from app.routers.auth import get_current_user, verify_role
 from app.routers.exams import recalculate_session_score
@@ -92,7 +92,7 @@ def get_submission_details(session_id: int, db: Session = Depends(get_db)):
         })
         
     # Proctoring logs (Timeline)
-    proctor_logs = db.query(ProctoringLog).filter(ProctoringLog.session_id == session_id).order_by(ProctoringLog.timestamp.asc()).all()
+    proctor_logs = db.query(ProctorEvent).filter(ProctorEvent.session_id == session_id).order_by(ProctorEvent.timestamp.asc()).all()
     formatted_logs = []
     for log in proctor_logs:
         formatted_logs.append({
@@ -216,10 +216,20 @@ def get_student_result_details(session_id: int, current_user: User = Depends(get
     cohort_average = current_score
     cohort_highest = current_score
     if cohort_scores:
-        less_or_equal = sum(1 for score in cohort_scores if score <= current_score)
-        percentile = (less_or_equal / len(cohort_scores)) * 100.0
         cohort_average = sum(cohort_scores) / len(cohort_scores)
         cohort_highest = max(cohort_scores)
+        
+        # Calculate percentile relative to other students
+        other_scores = cohort_scores.copy()
+        if current_score in other_scores:
+            other_scores.remove(current_score)
+            
+        if other_scores:
+            less_than = sum(1 for score in other_scores if score < current_score)
+            percentile = (less_than / len(other_scores)) * 100.0
+        else:
+            # Only one student in the cohort, or no other scores
+            percentile = 100.0
     else:
         cohort_scores = [current_score]
         

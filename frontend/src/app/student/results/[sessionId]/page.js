@@ -60,7 +60,7 @@ export default function StudentResultsPage() {
     }
 
     if (q.type === 'mcq') {
-      return String(q.student_answer).trim().lower() === String(q.correct_answer).trim().lower()
+      return String(q.student_answer).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase()
         ? "Correct"
         : "Wrong";
     }
@@ -212,7 +212,7 @@ export default function StudentResultsPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
               <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cohort Rank Percentile</span>
               <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: 'var(--accent-cyan)', lineHeight: 1.1 }}>
-                {details.percentile}th
+                {details.percentile}{getOrdinalSuffix(details.percentile)}
               </h2>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 Better than <strong>{details.percentile}%</strong> of the class
@@ -491,13 +491,13 @@ export default function StudentResultsPage() {
                         {/* AI comments */}
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           <Sparkles size={12} style={{ color: 'var(--accent-cyan)', marginTop: '0.15rem', flexShrink: 0 }} />
-                          <span>AI Assessment Proposed: {q.evaluation.ai_score} pts. Feedback: "{q.evaluation.ai_justification}"</span>
+                          <span>AI Assessment Proposed: {q.evaluation.ai_score} pts. Feedback: <span style={{ whiteSpace: 'pre-line' }}>"{q.evaluation.ai_justification}"</span></span>
                         </div>
 
                         {/* Examiner comments */}
                         {q.evaluation.is_graded ? (
                           <div style={{ background: 'rgba(16, 185, 129, 0.03)', borderLeft: '3px solid var(--accent-emerald)', padding: '0.75rem 1rem', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                            <strong style={{ color: 'var(--accent-emerald)' }}>Examiner Comments:</strong> {q.evaluation.examiner_feedback}
+                            <strong style={{ color: 'var(--accent-emerald)' }}>Examiner Comments:</strong> <span style={{ whiteSpace: 'pre-line' }}>{q.evaluation.examiner_feedback}</span>
                           </div>
                         ) : (
                           <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '0.8rem', paddingLeft: '0.5rem' }}>
@@ -553,3 +553,16 @@ export default function StudentResultsPage() {
     </div>
   );
 }
+
+const getOrdinalSuffix = (num) => {
+  const n = Math.round(num);
+  if (n % 100 >= 11 && n % 100 <= 13) {
+    return 'th';
+  }
+  switch (n % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+};

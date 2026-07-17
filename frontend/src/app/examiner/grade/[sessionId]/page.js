@@ -159,7 +159,7 @@ export default function GradingPage() {
 
             {details.questions.map((q, idx) => {
               const hasEvaluation = q.evaluation !== null;
-              const isMcqCorrect = q.type === 'mcq' && String(q.student_answer).trim().lower() === String(q.correct_answer).trim().lower();
+              const isMcqCorrect = q.type === 'mcq' && String(q.student_answer).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase();
               const isMultiCorrect = q.type === 'multiselect' && (() => {
                 try {
                   const correct = JSON.parse(q.correct_answer);
@@ -261,7 +261,7 @@ export default function GradingPage() {
                           <span style={{ color: 'var(--text-secondary)' }}>AI Proposed Grade:</span>
                           <span style={{ fontWeight: 'bold', color: 'var(--accent-cyan)' }}>{q.evaluation.ai_score} / {q.points}</span>
                         </div>
-                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: '1.4' }}>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: '1.4', whiteSpace: 'pre-line' }}>
                           "{q.evaluation.ai_justification}"
                         </p>
                       </div>

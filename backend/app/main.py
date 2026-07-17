@@ -39,6 +39,17 @@ app.include_router(exams.router, prefix=settings.API_V1_STR)
 app.include_router(proctor.router, prefix=settings.API_V1_STR)
 app.include_router(grading.router, prefix=settings.API_V1_STR)
 
+from app.services.scheduler import start_scheduler, shutdown_scheduler
+
+@app.on_event("startup")
+def startup_event():
+    start_scheduler()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    shutdown_scheduler()
+
+
 # Seed default users if table is empty
 def seed_default_users():
     db = SessionLocal()

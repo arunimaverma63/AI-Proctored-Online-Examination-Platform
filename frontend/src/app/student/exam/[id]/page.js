@@ -64,6 +64,10 @@ export default function ExamPage() {
   const [localImagePreview, setLocalImagePreview] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [captureCountdown, setCaptureCountdown] = useState(null);
+  
+  const [wordErrors, setWordErrors] = useState({});
+  const debounceTimeoutsRef = useRef({});
+
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -204,9 +208,12 @@ export default function ExamPage() {
     try {
       setLoading(true);
       const res = await studentApi.startExam(examId);
-      const { session_id, end_time, questions: qs, answers: savedAnswers } = res.data;
+      const { session_id, session_token, end_time, questions: qs, answers: savedAnswers } = res.data;
       
       setSessionId(session_id);
+      if (session_token) {
+        localStorage.setItem('session_token', session_token);
+      }
       setQuestions(qs);
       setAnswers(savedAnswers || {});
       
@@ -473,24 +480,61 @@ export default function ExamPage() {
   };
 
   // 5. Answer Choices Handlers
-  const handleAnswerSelect = (qId, val) => {
+  const handleAnswerSelect = async (qId, val) => {
     setAnswers((prev) => ({
       ...prev,
       [qId]: val
     }));
+    try {
+      await studentApi.submitSingleAnswer(sessionId, qId, val);
+    } catch (err) {
+      console.error("Failed to save answer immediately:", err);
+    }
   };
 
-  const handleMultiSelectToggle = (qId, val) => {
-    setAnswers((prev) => {
-      const currentList = prev[qId] || [];
-      const updatedList = currentList.includes(val)
-        ? currentList.filter(item => item !== val)
-        : [...currentList, val];
-      return {
-        ...prev,
-        [qId]: updatedList
-      };
-    });
+  const handleMultiSelectToggle = async (qId, val) => {
+    const currentVal = answers[qId] || [];
+    const nextVal = currentVal.includes(val)
+      ? currentVal.filter(item => item !== val)
+      : [...currentVal, val];
+      
+    setAnswers((prev) => ({
+      ...prev,
+      [qId]: nextVal
+    }));
+    try {
+      await studentApi.submitSingleAnswer(sessionId, qId, nextVal);
+    } catch (err) {
+      console.error("Failed to save multi-select answer immediately:", err);
+    }
+  };
+
+  const handleTextChange = (qId, val, type) => {
+    setAnswers(prev => ({ ...prev, [qId]: val }));
+    
+    const maxWords = type === 'short' ? 150 : 1000;
+    const words = val.trim().split(/\s+/).filter(Boolean).length;
+    
+    if (words > maxWords) {
+      setWordErrors(prev => ({ 
+        ...prev, 
+        [qId]: `Word count exceeds maximum limit of ${maxWords} words (${words}/${maxWords}).` 
+      }));
+    } else {
+      setWordErrors(prev => ({ ...prev, [qId]: null }));
+      
+      if (debounceTimeoutsRef.current[qId]) {
+        clearTimeout(debounceTimeoutsRef.current[qId]);
+      }
+      
+      debounceTimeoutsRef.current[qId] = setTimeout(async () => {
+        try {
+          await studentApi.submitSingleAnswer(sessionId, qId, val);
+        } catch (err) {
+          console.error("Debounced text save failed:", err);
+        }
+      }, 1500);
+    }
   };
 
   const toggleFlag = (qId) => {
@@ -517,7 +561,7 @@ export default function ExamPage() {
 
     setUploadingImage(true);
     try {
-      const res = await studentApi.uploadHandwritten(sessionId, localImageFile);
+      const res = await studentApi.uploadHandwritten(sessionId, qId, localImageFile);
       handleAnswerSelect(qId, res.data.image_url);
       setLocalImageFile(null);
       setLocalImagePreview(null);
@@ -803,7 +847,12 @@ export default function ExamPage() {
         </div>
 
         {/* Action Submit */}
-        <button onClick={handleManualSubmit} className="btn-danger" style={{ width: '100%', gap: '0.5rem' }}>
+        <button 
+          onClick={handleManualSubmit} 
+          className="btn-danger" 
+          style={{ width: '100%', gap: '0.5rem', opacity: Object.values(wordErrors).some(err => err !== null) ? 0.5 : 1 }} 
+          disabled={Object.values(wordErrors).some(err => err !== null)}
+        >
           <Send size={16} /> Submit Exam
         </button>
       </div>
@@ -966,11 +1015,21 @@ export default function ExamPage() {
                     rows={currentQ.type === 'short' ? 4 : 8}
                     placeholder="Type your response here..."
                     value={answers[currentQ.id] || ''}
-                    onChange={(e) => handleAnswerSelect(currentQ.id, e.target.value)}
-                    style={{ fontSize: '1rem', lineHeight: '1.5', fontFamily: 'inherit' }}
+                    onChange={(e) => handleTextChange(currentQ.id, e.target.value, currentQ.type)}
+                    style={{ 
+                      fontSize: '1rem', 
+                      lineHeight: '1.5', 
+                      fontFamily: 'inherit',
+                      borderColor: wordErrors[currentQ.id] ? 'var(--accent-rose)' : 'var(--border-glass)'
+                    }}
                   />
-                  <div style={{ textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.4rem' }}>
-                    Word Count: {((answers[currentQ.id] || '').trim().split(/\s+/).filter(Boolean)).length}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.4rem' }}>
+                    <div style={{ color: 'var(--accent-rose)', fontSize: '0.8rem' }}>
+                      {wordErrors[currentQ.id] || ''}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Word Count: {((answers[currentQ.id] || '').trim().split(/\s+/).filter(Boolean)).length}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1094,8 +1153,11 @@ export default function ExamPage() {
               <button
                 onClick={() => setCurrentIdx(prev => Math.min(prev + 1, totalQ - 1))}
                 className="btn-secondary"
-                disabled={currentIdx === totalQ - 1}
-                style={{ opacity: currentIdx === totalQ - 1 ? 0.5 : 1, cursor: currentIdx === totalQ - 1 ? 'not-allowed' : 'pointer' }}
+                disabled={currentIdx === totalQ - 1 || Object.values(wordErrors).some(err => err !== null)}
+                style={{ 
+                  opacity: (currentIdx === totalQ - 1 || Object.values(wordErrors).some(err => err !== null)) ? 0.5 : 1, 
+                  cursor: (currentIdx === totalQ - 1 || Object.values(wordErrors).some(err => err !== null)) ? 'not-allowed' : 'pointer' 
+                }}
               >
                 Next <ChevronRight size={16} />
               </button>

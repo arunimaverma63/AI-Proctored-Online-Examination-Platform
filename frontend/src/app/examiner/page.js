@@ -524,6 +524,63 @@ export default function ExaminerDashboard() {
                 )}
               </div>
 
+              {/* Awaiting Grading & Review */}
+              <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'left' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '800', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Award size={18} style={{ color: 'var(--accent-purple)' }} />
+                  Awaiting Grading & Review
+                </h3>
+                {displayStats.grading_items.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', padding: '2rem 0', textAlign: 'center' }}>
+                    No pending items in subjective grading queue.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto' }}>
+                    {displayStats.grading_items.map((item, idx) => {
+                      let typeBadge = <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>SHORT</span>;
+                      if (item.question_type === 'long') {
+                        typeBadge = <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>LONG</span>;
+                      } else if (item.question_type === 'image' || item.question_type === 'image_upload') {
+                        typeBadge = <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>IMAGE</span>;
+                      }
+
+                      return (
+                        <div key={item.evaluation_id || idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', paddingBottom: '0.8rem', borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flex: 1, minWidth: 0 }}>
+                            <div style={{ flexShrink: 0 }}>{typeBadge}</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', textAlign: 'left' }}>
+                                {item.question_text}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                Student: {item.student_username}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                              AI Score: {item.ai_score !== null ? `${item.ai_score}/${item.total_points}` : 'N/A'}
+                            </span>
+                            <button 
+                              onClick={() => {
+                                if (item.session_id) {
+                                  router.push(`/examiner/grade/${item.session_id}`);
+                                }
+                              }}
+                              className="btn-primary" 
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                            >
+                              Grade <Edit3 size={10} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
         )}
