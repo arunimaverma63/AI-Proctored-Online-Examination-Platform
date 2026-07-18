@@ -159,7 +159,11 @@ def delete_exam(id: int, db: Session = Depends(get_db)):
 
 # ----------------- Student Exam Taking Routes -----------------
 @router.get("/student/exams", response_model=List[StudentExamSessionSummary])
-def get_student_exams_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_student_exams_summary(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     if current_user.role != "student":
         raise HTTPException(status_code=403, detail="Only students can access this endpoint")
         
@@ -183,6 +187,12 @@ def get_student_exams_summary(current_user: User = Depends(get_current_user), db
             status_val = "available"
             
         if session:
+            # If session is active but expired, update its status to timed_out
+            if session.status == "active" and (now > session.end_time or now > exam.end_time):
+                session.status = "timed_out"
+                db.commit()
+                db.refresh(session)
+                background_tasks.add_task(run_ai_evaluations, session.id, db)
             status_val = session.status
             
         summaries.append({
@@ -200,7 +210,12 @@ def get_student_exams_summary(current_user: User = Depends(get_current_user), db
     return summaries
 
 @router.post("/student/exams/{id}/start")
-def start_exam_session(id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def start_exam_session(
+    id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     if current_user.role != "student":
         raise HTTPException(status_code=403, detail="Only students can take exams")
         
@@ -220,6 +235,13 @@ def start_exam_session(id: int, current_user: User = Depends(get_current_user), 
     ).first()
     
     if session:
+        # Check if the active session is already expired
+        if session.status == "active" and (now > session.end_time or now > exam.end_time):
+            session.status = "timed_out"
+            db.commit()
+            db.refresh(session)
+            background_tasks.add_task(run_ai_evaluations, session.id, db)
+            
         if session.status != "active":
             raise HTTPException(status_code=400, detail=f"Exam session already completed with status: {session.status}")
         # Make sure session_token exists on resume
