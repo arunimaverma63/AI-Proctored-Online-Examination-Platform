@@ -47,6 +47,7 @@ class QuestionBase(BaseModel):
     text: str
     options: Optional[str] = None  # JSON string
     points: float = 1.0
+    reference_file_url: Optional[str] = None
 
 class QuestionCreate(QuestionBase):
     correct_answer: Optional[str] = None  # JSON or text

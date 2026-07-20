@@ -32,91 +32,21 @@ export default function AdminPage() {
   const [qCorrect, setQCorrect] = useState('');
   const [qModelAnswer, setQModelAnswer] = useState('');
   const [qPoints, setQPoints] = useState(1.0);
+  const [qRefFile, setQRefFile] = useState(null);
+  const [uploadingRefFile, setUploadingRefFile] = useState(false);
 
-  // Exams state
-  const [exams, setExams] = useState([]);
-  const [exTitle, setExTitle] = useState('');
-  const [exSubjectId, setExSubjectId] = useState('');
-  const [exDuration, setExDuration] = useState(60);
-  const [exCount, setExCount] = useState(10);
-  const [exNegative, setExNegative] = useState(0.0);
-  const [exRandomQ, setExRandomQ] = useState(true);
-  const [exRandomO, setExRandomO] = useState(true);
-  const [exStart, setExStart] = useState('');
-  const [exEnd, setExEnd] = useState('');
-
-  useEffect(() => {
-    fetchData();
-    fetchDashboardStats();
-  }, []);
-
-  const fetchDashboardStats = async () => {
+  const handleRefFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
     try {
-      setStatsLoading(true);
-      const res = await examApi.getDashboardStats();
-      setStats(res.data);
+      setUploadingRefFile(true);
+      const res = await questionApi.uploadFile(file);
+      setQRefFile(res.data.file_url);
+      showFeedback('Reference file uploaded successfully');
     } catch (err) {
-      console.error('Failed to fetch dashboard stats:', err);
+      showFeedback(err.response?.data?.detail || 'Failed to upload reference file', false);
     } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  const fetchData = async () => {
-    try {
-      const subs = await subjectApi.list();
-      setSubjects(subs.data);
-      if (subs.data.length > 0) {
-        setQSubjectId(subs.data[0].id);
-        setExSubjectId(subs.data[0].id);
-      }
-
-      const qs = await questionApi.list();
-      setQuestions(qs.data);
-
-      const exs = await examApi.list();
-      setExams(exs.data);
-    } catch (err) {
-      setError('Failed to fetch data from API');
-    }
-  };
-
-  const showFeedback = (msg, isSuccess = true) => {
-    if (isSuccess) {
-      setSuccess(msg);
-      setError('');
-    } else {
-      setError(msg);
-      setSuccess('');
-    }
-    setTimeout(() => {
-      setSuccess('');
-      setError('');
-    }, 5000);
-  };
-
-  // Subject Actions
-  const handleAddSubject = async (e) => {
-    e.preventDefault();
-    if (!newSubject.trim()) return;
-    try {
-      await subjectApi.create(newSubject.trim());
-      setNewSubject('');
-      showFeedback('Subject created successfully');
-      fetchData();
-    } catch (err) {
-      showFeedback(err.response?.data?.detail || 'Failed to create subject', false);
-    }
-  };
-
-  const handleDeleteSubject = async (id) => {
-    if (!confirm('Are you sure you want to delete this subject? All related questions and exams will be deleted.')) return;
-    try {
-      await subjectApi.delete(id);
-      showFeedback('Subject deleted');
-      fetchData();
-    } catch (err) {
-      showFeedback('Failed to delete subject', false);
+      setUploadingRefFile(false);
     }
   };
 
@@ -152,7 +82,8 @@ export default function AdminPage() {
         options: finalOptions,
         correct_answer: finalCorrect,
         points: parseFloat(qPoints),
-        model_answer: qType in ['short', 'long', 'image'] ? qModelAnswer : qModelAnswer || null
+        model_answer: ['short', 'long', 'image', 'pdf', 'cs_file'].includes(qType) ? qModelAnswer : qModelAnswer || null,
+        reference_file_url: qRefFile
       });
 
       // Reset
@@ -161,6 +92,7 @@ export default function AdminPage() {
       setQModelAnswer('');
       setQOptions(['', '']);
       setQPoints(1.0);
+      setQRefFile(null);
       showFeedback('Question added to bank');
       fetchData();
     } catch (err) {
@@ -982,6 +914,8 @@ export default function AdminPage() {
                       <option value="short">Short Subjective</option>
                       <option value="long">Long Subjective</option>
                       <option value="image">Handwritten Upload</option>
+                      <option value="pdf">PDF Document Upload</option>
+                      <option value="cs_file">CS / Code File Upload</option>
                     </select>
                   </div>
                 </div>
@@ -1038,7 +972,7 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {['short', 'long', 'image'].includes(qType) && (
+                {['short', 'long', 'image', 'pdf', 'cs_file'].includes(qType) && (
                   <div>
                     <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Model Answer / Grading Rubric</label>
                     <textarea
@@ -1051,6 +985,22 @@ export default function AdminPage() {
                     />
                   </div>
                 )}
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Reference Attachment (PDF, Image, CS File)</label>
+                  <input
+                    type="file"
+                    className="glass-input"
+                    accept=".pdf,.png,.jpg,.jpeg,.cs,.java,.py,.cpp,.js,.txt"
+                    onChange={handleRefFileUpload}
+                    disabled={uploadingRefFile}
+                  />
+                  {qRefFile && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', marginTop: '0.3rem' }}>
+                      Attached: <a href={`http://localhost:8000${qRefFile}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>View Reference File</a>
+                    </div>
+                  )}
+                </div>
 
                 <div>
                   <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Points / Weight</label>
@@ -1103,6 +1053,11 @@ export default function AdminPage() {
                         {q.correct_answer && (
                           <div style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)' }}>
                             <strong>Correct:</strong> {q.type === 'multiselect' ? JSON.parse(q.correct_answer).join(', ') : q.correct_answer}
+                          </div>
+                        )}
+                        {q.reference_file_url && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', marginTop: '0.3rem' }}>
+                            📁 <strong>Reference File:</strong> <a href={`http://localhost:8000${q.reference_file_url}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>Download / View Attachment</a>
                           </div>
                         )}
                       </div>

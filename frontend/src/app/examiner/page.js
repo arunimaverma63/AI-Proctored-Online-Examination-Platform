@@ -36,6 +36,23 @@ export default function ExaminerDashboard() {
   const [qCorrectMultiIndices, setQCorrectMultiIndices] = useState([]); // For multi_select (array of indices)
   const [qModelAnswer, setQModelAnswer] = useState('');
   const [qPoints, setQPoints] = useState(1.0);
+  const [qRefFile, setQRefFile] = useState(null);
+  const [uploadingRefFile, setUploadingRefFile] = useState(false);
+
+  const handleRefFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      setUploadingRefFile(true);
+      const res = await questionApi.uploadFile(file);
+      setQRefFile(res.data.file_url);
+      showFeedback('Reference file uploaded successfully');
+    } catch (err) {
+      showFeedback(err.response?.data?.detail || 'Failed to upload reference file', false);
+    } finally {
+      setUploadingRefFile(false);
+    }
+  };
 
   // Exams state
   const [exams, setExams] = useState([]);
@@ -190,8 +207,8 @@ export default function ExaminerDashboard() {
       let finalOptions = null;
       let finalCorrect = null;
 
-      // Note: We use the exact types requested (MCQ, multi_select, short_answer, long_answer, image_upload)
-      // The backend exams.py will normalize them to internal values: mcq, multiselect, short, long, image
+      // Note: We use the exact types requested (MCQ, multi_select, short_answer, long_answer, image_upload, pdf_upload, code_upload)
+      // The backend exams.py will normalize them to internal values: mcq, multiselect, short, long, image, pdf, cs_file
       if (qType === 'MCQ' || qType === 'multi_select') {
         const filteredOpts = qOptions.filter(o => o.trim() !== '');
         if (filteredOpts.length < 2) {
@@ -224,12 +241,13 @@ export default function ExaminerDashboard() {
 
       await questionApi.create({
         subject_id: parseInt(qSubjectId),
-        type: qType, // MCQ, multi_select, short_answer, long_answer, image_upload
+        type: qType, // MCQ, multi_select, short_answer, long_answer, image_upload, pdf_upload, code_upload
         text: qText,
         options: finalOptions,
         correct_answer: finalCorrect,
         points: parseFloat(qPoints),
-        model_answer: ['short_answer', 'long_answer', 'image_upload'].includes(qType) ? qModelAnswer : null
+        model_answer: ['short_answer', 'long_answer', 'image_upload', 'pdf_upload', 'code_upload'].includes(qType) ? qModelAnswer : null,
+        reference_file_url: qRefFile
       });
 
       // Reset Form states
@@ -239,6 +257,7 @@ export default function ExaminerDashboard() {
       setQCorrectOptionIndex(0);
       setQCorrectMultiIndices([]);
       setQPoints(1.0);
+      setQRefFile(null);
       showFeedback('Question added to Bank successfully');
       fetchData();
     } catch (err) {
@@ -767,7 +786,9 @@ export default function ExaminerDashboard() {
                     <option value="multi_select" style={{ background: 'var(--bg-secondary)', color: 'white' }}>multi_select (Multiple Checkboxes)</option>
                     <option value="short_answer" style={{ background: 'var(--bg-secondary)', color: 'white' }}>short_answer</option>
                     <option value="long_answer" style={{ background: 'var(--bg-secondary)', color: 'white' }}>long_answer</option>
-                    <option value="image_upload" style={{ background: 'var(--bg-secondary)', color: 'white' }}>image_upload (OCR + Canvas Annotation)</option>
+                    <option value="image_upload" style={{ background: 'var(--bg-secondary)', color: 'white' }}>image_upload (Handwritten Upload)</option>
+                    <option value="pdf_upload" style={{ background: 'var(--bg-secondary)', color: 'white' }}>pdf_upload (PDF Document Upload)</option>
+                    <option value="code_upload" style={{ background: 'var(--bg-secondary)', color: 'white' }}>code_upload (CS / Code File Upload)</option>
                   </select>
                 </div>
 
@@ -845,7 +866,7 @@ export default function ExaminerDashboard() {
                 )}
 
                 {/* Subjective Model Answer */}
-                {['short_answer', 'long_answer', 'image_upload'].includes(qType) && (
+                {['short_answer', 'long_answer', 'image_upload', 'pdf_upload', 'code_upload'].includes(qType) && (
                   <div>
                     <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Model Answer / Grading Rubric</label>
                     <textarea 
@@ -858,6 +879,22 @@ export default function ExaminerDashboard() {
                     />
                   </div>
                 )}
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Reference Attachment (PDF, Image, CS File)</label>
+                  <input
+                    type="file"
+                    className="glass-input"
+                    accept=".pdf,.png,.jpg,.jpeg,.cs,.java,.py,.cpp,.js,.txt"
+                    onChange={handleRefFileUpload}
+                    disabled={uploadingRefFile}
+                  />
+                  {qRefFile && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', marginTop: '0.3rem' }}>
+                      Attached: <a href={`http://localhost:8000${qRefFile}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>View Reference File</a>
+                    </div>
+                  )}
+                </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                   <div>
@@ -915,6 +952,12 @@ export default function ExaminerDashboard() {
                         </div>
 
                         <p style={{ fontWeight: '600', fontSize: '0.95rem', marginBottom: '0.5rem' }}>{q.text}</p>
+                        
+                        {q.reference_file_url && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', margin: '0.4rem 0' }}>
+                            📁 <strong>Reference File:</strong> <a href={`http://localhost:8000${q.reference_file_url}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>Download / View Attachment</a>
+                          </div>
+                        )}
                         
                         {optsText.length > 0 && (
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '0.8rem', borderLeft: '2px solid var(--border-glass)', margin: '0.5rem 0' }}>

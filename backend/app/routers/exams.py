@@ -68,13 +68,20 @@ def create_question(question: QuestionCreate, db: Session = Depends(get_db)):
     if not sub:
         raise HTTPException(status_code=404, detail="Subject not found")
     
-    # Normalize question type from verbose enums (e.g. MCQ, multi_select, short_answer, long_answer, image_upload)
+    # Normalize question type from verbose enums (e.g. MCQ, multi_select, short_answer, long_answer, image_upload, pdf_upload, cs_file)
     type_map = {
         "MCQ": "mcq",
         "multi_select": "multiselect",
         "short_answer": "short",
         "long_answer": "long",
-        "image_upload": "image"
+        "image_upload": "image",
+        "handwritten": "image",
+        "pdf_upload": "pdf",
+        "pdf": "pdf",
+        "code_upload": "cs_file",
+        "cs_file": "cs_file",
+        "code": "cs_file",
+        "file_upload": "cs_file"
     }
     norm_type = type_map.get(question.type, question.type)
     if norm_type == "mcq":
@@ -85,8 +92,12 @@ def create_question(question: QuestionCreate, db: Session = Depends(get_db)):
         norm_type = "short"
     elif norm_type in ["long", "long_answer"]:
         norm_type = "long"
-    elif norm_type in ["image", "image_upload"]:
+    elif norm_type in ["image", "image_upload", "handwritten"]:
         norm_type = "image"
+    elif norm_type in ["pdf", "pdf_upload"]:
+        norm_type = "pdf"
+    elif norm_type in ["cs_file", "code_upload", "code", "file_upload"]:
+        norm_type = "cs_file"
     
     new_q = Question(
         subject_id=question.subject_id,
@@ -95,7 +106,8 @@ def create_question(question: QuestionCreate, db: Session = Depends(get_db)):
         options=question.options,
         correct_answer=question.correct_answer,
         points=question.points,
-        model_answer=question.model_answer
+        model_answer=question.model_answer,
+        reference_file_url=question.reference_file_url
     )
     db.add(new_q)
     db.commit()
@@ -440,6 +452,69 @@ async def upload_handwritten_image(
     
     return {"image_url": file_url, "thumbnail_url": thumb_url}
 
+@router.post("/upload-file", dependencies=[Depends(verify_role(["admin", "examiner"]))])
+async def upload_reference_file(
+    file: UploadFile = File(...)
+):
+    ext = os.path.splitext(file.filename)[1]
+    allowed_exts = [
+        ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+        ".cs", ".java", ".py", ".cpp", ".c", ".h", ".js", ".ts",
+        ".txt", ".html", ".css", ".json", ".sql", ".zip"
+    ]
+    if ext.lower() not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"File format {ext} not allowed.")
+        
+    filename = f"qref_{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(settings.UPLOAD_DIR, filename)
+    
+    with open(filepath, "wb") as buffer:
+        buffer.write(await file.read())
+        
+    file_url = f"/static/uploads/{filename}"
+    return {"file_url": file_url, "filename": file.filename}
+
+@router.post("/student/session/{session_id}/upload-file")
+async def upload_student_file(
+    session_id: int,
+    question_id: int,
+    file: UploadFile = File(...),
+    x_session_token: str = Header(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    session = verify_session(session_id, x_session_token, current_user, db)
+    if session.status != "active":
+        raise HTTPException(status_code=400, detail="Session is not active")
+        
+    now = datetime.utcnow()
+    if now > session.end_time:
+        raise HTTPException(status_code=408, detail="Exam time has expired. Cannot upload files.")
+        
+    ext = os.path.splitext(file.filename)[1]
+    allowed_exts = [
+        ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+        ".cs", ".java", ".py", ".cpp", ".c", ".h", ".js", ".ts",
+        ".txt", ".html", ".css", ".json", ".sql"
+    ]
+    if ext.lower() not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"File format {ext} not allowed.")
+        
+    filename = f"answer_{session_id}_{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(settings.UPLOAD_DIR, filename)
+    
+    with open(filepath, "wb") as buffer:
+        buffer.write(await file.read())
+        
+    file_url = f"/static/uploads/{filename}"
+    
+    answers = json.loads(session.answers or "{}")
+    answers[str(question_id)] = file_url
+    session.answers = json.dumps(answers)
+    db.commit()
+    
+    return {"file_url": file_url, "filename": file.filename}
+
 
 # Background Grading Task
 async def run_ai_evaluations(session_id: int, db_session: Session):
@@ -457,7 +532,7 @@ async def run_ai_evaluations(session_id: int, db_session: Session):
     # Process subjective evaluations
     for q_id_str, student_ans in student_answers.items():
         q = q_dict.get(q_id_str)
-        if not q or q.type not in ["short", "long", "image"]:
+        if not q or q.type not in ["short", "long", "image", "pdf", "cs_file"]:
             continue
             
         # Check if evaluation already exists
@@ -482,8 +557,7 @@ async def run_ai_evaluations(session_id: int, db_session: Session):
         
         if q.type == "image":
             # Answer is a static file path, load it and encode as base64
-            # e.g., student_ans = "/static/uploads/handwritten_xxx.jpg"
-            img_path = student_ans.replace("/static/uploads/", "")
+            img_path = str(student_ans or "").replace("/static/uploads/", "")
             filepath = os.path.join(settings.UPLOAD_DIR, img_path)
             
             if os.path.exists(filepath):
@@ -493,6 +567,19 @@ async def run_ai_evaluations(session_id: int, db_session: Session):
                 student_text_ans = None
             else:
                 student_text_ans = "[Handwritten image missing on server]"
+        elif q.type in ["pdf", "cs_file"]:
+            f_path = str(student_ans or "").replace("/static/uploads/", "")
+            filepath = os.path.join(settings.UPLOAD_DIR, f_path)
+            if os.path.exists(filepath):
+                eval_record.handwritten_image_url = student_ans  # Reuse attachment url field
+                try:
+                    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                        file_content = f.read(5000)
+                    student_text_ans = f"[{q.type.upper()} File Content]:\n" + file_content
+                except Exception as read_err:
+                    student_text_ans = f"[{q.type.upper()} File Uploaded: {student_ans}]"
+            else:
+                student_text_ans = f"[{q.type.upper()} file missing on server]"
                 
         # Call AI Evaluation service
         try:

@@ -29,6 +29,22 @@ api.interceptors.request.use(
   }
 );
 
+// Response interceptor to handle unauthenticated 401 responses
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (typeof window !== 'undefined' && error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('role');
+      localStorage.removeItem('username');
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Auth endpoints
 export const authApi = {
   register: (username, password, role) => 
@@ -50,6 +66,15 @@ export const questionApi = {
   list: () => api.get('/questions'),
   create: (questionData) => api.post('/questions', questionData),
   delete: (id) => api.delete(`/questions/${id}`),
+  uploadFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload-file', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
 };
 
 // Exam Configs (Admin)
@@ -72,6 +97,15 @@ export const studentApi = {
     const formData = new FormData();
     formData.append('file', file);
     return api.post(`/student/session/${sessionId}/upload-handwritten?question_id=${questionId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  },
+  uploadFile: (sessionId, questionId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/student/session/${sessionId}/upload-file?question_id=${questionId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },

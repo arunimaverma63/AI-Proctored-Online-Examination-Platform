@@ -573,6 +573,21 @@ export default function ExamPage() {
     }
   };
 
+  // General PDF / CS File Upload handler
+  const handleGeneralFileUpload = async (qId, file) => {
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const res = await studentApi.uploadFile(sessionId, qId, file);
+      handleAnswerSelect(qId, res.data.file_url);
+      alert('File uploaded successfully.');
+    } catch (err) {
+      alert('Upload failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   // Webcam Snap Photo capture countdown trigger
   const captureFromWebcam = () => {
     if (!videoRef.current || camStatus !== 'active') {
@@ -907,9 +922,15 @@ export default function ExamPage() {
                 </div>
               </div>
 
-              <h2 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '2rem', lineHeight: '1.6', userSelect: 'none' }}>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: '600', marginBottom: '1.5rem', lineHeight: '1.6', userSelect: 'none' }}>
                 {currentQ.text}
               </h2>
+
+              {currentQ.reference_file_url && (
+                <div style={{ marginBottom: '1.5rem', background: 'rgba(0, 242, 254, 0.05)', padding: '0.8rem 1rem', borderRadius: '8px', border: '1px solid rgba(0, 242, 254, 0.2)', fontSize: '0.85rem' }}>
+                  📄 <strong>Question Reference Attachment:</strong> <a href={`http://localhost:8000${currentQ.reference_file_url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', marginLeft: '0.5rem' }}>View / Download Reference File</a>
+                </div>
+              )}
 
               {/* Render MCQ with Radio buttons */}
               {currentQ.type === 'mcq' && (
@@ -1035,7 +1056,7 @@ export default function ExamPage() {
               )}
 
               {/* Render Image upload with Drag & Drop / Camera capture + Preview */}
-              {currentQ.type === 'image' && (
+              {['image', 'image_upload', 'handwritten'].includes(currentQ.type) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                   
                   {answers[currentQ.id] && !localImagePreview ? (
@@ -1132,6 +1153,74 @@ export default function ExamPage() {
                           <Camera size={16} /> Snap Photo via Webcam
                         </button>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Render PDF upload */}
+              {['pdf', 'pdf_upload'].includes(currentQ.type) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  {answers[currentQ.id] ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.02)' }}>
+                      <span className="badge badge-emerald">PDF Document Uploaded Successfully</span>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--accent-cyan)' }}>File: {answers[currentQ.id].split('/').pop()}</p>
+                      <div style={{ display: 'flex', gap: '1rem' }}>
+                        <a href={`http://localhost:8000${answers[currentQ.id]}`} target="_blank" rel="noreferrer" className="btn-primary" style={{ fontSize: '0.85rem' }}>
+                          View PDF Document
+                        </a>
+                        <button onClick={() => handleAnswerSelect(currentQ.id, null)} className="btn-secondary" style={{ fontSize: '0.85rem' }}>
+                          Re-upload PDF
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 2rem', border: '2px dashed var(--border-glass)', borderRadius: '12px', background: 'rgba(255,255,255,0.01)', textAlign: 'center' }}>
+                      <Upload size={40} style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }} />
+                      <div>
+                        <p style={{ fontWeight: '600', marginBottom: '0.25rem', fontSize: '1rem' }}>Upload PDF Document</p>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: '400px' }}>
+                          Select or drag and drop your PDF answer document for this question (.pdf format allowed).
+                        </p>
+                      </div>
+                      <label className="btn-primary" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        Choose PDF File
+                        <input type="file" accept=".pdf" onChange={(e) => handleGeneralFileUpload(currentQ.id, e.target.files[0])} style={{ display: 'none' }} />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Render CS / Code file upload */}
+              {['cs_file', 'code_upload', 'code'].includes(currentQ.type) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  {answers[currentQ.id] ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '2rem', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.02)' }}>
+                      <span className="badge badge-emerald">CS / Code File Uploaded Successfully</span>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--accent-cyan)' }}>File: {answers[currentQ.id].split('/').pop()}</p>
+                      <div style={{ display: 'flex', gap: '1rem' }}>
+                        <a href={`http://localhost:8000${answers[currentQ.id]}`} target="_blank" rel="noreferrer" className="btn-primary" style={{ fontSize: '0.85rem' }}>
+                          View / Download Code File
+                        </a>
+                        <button onClick={() => handleAnswerSelect(currentQ.id, null)} className="btn-secondary" style={{ fontSize: '0.85rem' }}>
+                          Re-upload Code File
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 2rem', border: '2px dashed var(--border-glass)', borderRadius: '12px', background: 'rgba(255,255,255,0.01)', textAlign: 'center' }}>
+                      <Upload size={40} style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }} />
+                      <div>
+                        <p style={{ fontWeight: '600', marginBottom: '0.25rem', fontSize: '1rem' }}>Upload CS / Code Source File</p>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', maxWidth: '400px' }}>
+                          Upload your source code solution (.cs, .java, .py, .cpp, .js, .txt file formats).
+                        </p>
+                      </div>
+                      <label className="btn-primary" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        Choose Code File
+                        <input type="file" accept=".cs,.java,.py,.cpp,.c,.h,.js,.ts,.txt" onChange={(e) => handleGeneralFileUpload(currentQ.id, e.target.files[0])} style={{ display: 'none' }} />
+                      </label>
                     </div>
                   )}
                 </div>

@@ -35,6 +35,7 @@ class Question(Base):
     correct_answer = Column(Text, nullable=True)  # JSON string of correct key(s) or correct text
     points = Column(Float, nullable=False, default=1.0)
     model_answer = Column(Text, nullable=True)  # Rubric / Model Answer for subjective questions
+    reference_file_url = Column(String, nullable=True)  # Optional reference file URL (PDF, image, CS file)
 
     # Relationships
     subject = relationship("Subject", back_populates="questions")

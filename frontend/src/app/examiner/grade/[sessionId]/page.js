@@ -179,10 +179,16 @@ export default function GradingPage() {
                   </div>
 
                   {/* Question text */}
-                  <p style={{ fontWeight: '600', fontSize: '1.05rem', marginBottom: '1.5rem' }}>{q.text}</p>
+                  <p style={{ fontWeight: '600', fontSize: '1.05rem', marginBottom: '1rem' }}>{q.text}</p>
+
+                  {q.reference_file_url && (
+                    <div style={{ marginBottom: '1.5rem', background: 'rgba(0, 242, 254, 0.05)', padding: '0.6rem 0.8rem', borderRadius: '6px', border: '1px solid rgba(0, 242, 254, 0.2)', fontSize: '0.85rem' }}>
+                      📁 <strong>Reference File Attachment:</strong> <a href={`http://localhost:8000${q.reference_file_url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', textDecoration: 'underline', marginLeft: '0.4rem' }}>Download / View Reference File</a>
+                    </div>
+                  )}
 
                   {/* Model Answer (if subjective) */}
-                  {['short', 'long', 'image'].includes(q.type) && (
+                  {['short', 'long', 'image', 'pdf', 'cs_file'].includes(q.type) && (
                     <div style={{ background: 'rgba(157, 78, 221, 0.05)', border: '1px solid rgba(157, 78, 221, 0.2)', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--accent-purple)', display: 'block', marginBottom: '0.25rem' }}>MODEL ANSWER / RUBRIC:</span>
                       <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{q.model_answer}</p>
@@ -205,9 +211,9 @@ export default function GradingPage() {
                     {/* Render Image submission */}
                     {q.type === 'image' && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                        {q.student_answer && (
+                        {q.evaluation?.student_answer && (
                           <div style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', background: 'rgba(0, 242, 254, 0.05)', padding: '0.5rem', borderRadius: '4px' }}>
-                            <strong>AI OCR Extracted Text:</strong> "{q.evaluation?.student_answer}"
+                            <strong>AI OCR Extracted Text:</strong> "{q.evaluation.student_answer}"
                           </div>
                         )}
                         {q.evaluation?.handwritten_image_url ? (
@@ -224,6 +230,32 @@ export default function GradingPage() {
                           </div>
                         ) : (
                           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>[No image uploaded]</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Render PDF or CS File submission */}
+                    {['pdf', 'cs_file'].includes(q.type) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                        {q.evaluation?.student_answer && (
+                          <div style={{ fontSize: '0.85rem', color: 'var(--accent-cyan)', background: 'rgba(0, 242, 254, 0.05)', padding: '0.75rem', borderRadius: '6px', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                            {q.evaluation.student_answer}
+                          </div>
+                        )}
+                        {(q.student_answer || q.evaluation?.handwritten_image_url) ? (
+                          <div>
+                            <a 
+                              href={`http://localhost:8000${q.student_answer || q.evaluation.handwritten_image_url}`} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="btn-primary"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                            >
+                              <ExternalLink size={14} /> View / Download Uploaded {q.type === 'pdf' ? 'PDF' : 'CS / Code'} File
+                            </a>
+                          </div>
+                        ) : (
+                          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>[No file uploaded by student]</p>
                         )}
                       </div>
                     )}

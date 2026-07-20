@@ -13,6 +13,23 @@ from app.routers.auth import get_password_hash
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# Ensure database schema migrations
+try:
+    with engine.connect() as _conn:
+        from sqlalchemy import text
+        stmts = [
+            "ALTER TABLE questions ADD COLUMN IF NOT EXISTS reference_file_url VARCHAR;",
+            "ALTER TABLE proctor_events ADD COLUMN IF NOT EXISTS screenshot_url VARCHAR;",
+            "ALTER TABLE proctor_events ADD COLUMN IF NOT EXISTS description VARCHAR;",
+            "ALTER TABLE subjective_evaluations ADD COLUMN IF NOT EXISTS annotations TEXT;",
+            "ALTER TABLE exams ADD COLUMN IF NOT EXISTS results_published BOOLEAN DEFAULT FALSE;"
+        ]
+        for stmt in stmts:
+            _conn.execute(text(stmt))
+        _conn.commit()
+except Exception as _e:
+    print(f"Schema migration note: {_e}")
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
@@ -21,7 +38,8 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
+    allow_origin_regex=r"http://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
