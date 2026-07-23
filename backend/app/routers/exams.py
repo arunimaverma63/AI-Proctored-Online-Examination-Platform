@@ -205,6 +205,17 @@ def get_student_exams_summary(
                 db.commit()
                 db.refresh(session)
                 background_tasks.add_task(run_ai_evaluations, session.id, db)
+            elif session.status == "active":
+                # Auto-submit active session because they left the exam page and went to dashboard/other pages
+                session.status = "submitted"
+                db.commit()
+                db.refresh(session)
+                background_tasks.add_task(run_ai_evaluations, session.id, db)
+                try:
+                    from app.services.scheduler import cancel_auto_submit
+                    cancel_auto_submit(session.id)
+                except Exception:
+                    pass
             status_val = session.status
             
         summaries.append({
@@ -254,13 +265,11 @@ def start_exam_session(
             db.refresh(session)
             background_tasks.add_task(run_ai_evaluations, session.id, db)
             
-        if session.status != "active":
-            raise HTTPException(status_code=400, detail=f"Exam session already completed with status: {session.status}")
-        # Make sure session_token exists on resume
-        if not session.session_token:
-            session.session_token = str(uuid.uuid4())
-            db.commit()
-            db.refresh(session)
+        # We do not allow resuming or restarting a session under any circumstances
+        raise HTTPException(
+            status_code=400, 
+            detail="This exam has already been started and can only be taken once."
+        )
     else:
         # Create new active exam session
         end_time = now + timedelta(minutes=exam.duration_minutes)

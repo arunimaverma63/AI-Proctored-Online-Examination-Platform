@@ -66,6 +66,7 @@ export default function ExamPage() {
   const [captureCountdown, setCaptureCountdown] = useState(null);
   
   const [wordErrors, setWordErrors] = useState({});
+  const [fullscreenRequired, setFullscreenRequired] = useState(true);
   const debounceTimeoutsRef = useRef({});
 
 
@@ -80,6 +81,7 @@ export default function ExamPage() {
   const wsRef = useRef(null);
   const answersRef = useRef({});
   const suspicionScoreRef = useRef(0);
+  const submittedRef = useRef(false);
 
   // Synchronize refs for event handlers
   useEffect(() => {
@@ -193,6 +195,86 @@ export default function ExamPage() {
     };
   }, [sessionId]);
 
+  const submitWithKeepAlive = () => {
+    if (!sessionId) return;
+    const token = localStorage.getItem('token');
+    const sessionToken = localStorage.getItem('session_token');
+    
+    // Save current answers first
+    const answersData = JSON.stringify({ answers: answersRef.current });
+    fetch(`http://localhost:8000/api/student/session/${sessionId}/save`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-Session-Token': sessionToken,
+        'Content-Type': 'application/json'
+      },
+      body: answersData,
+      keepalive: true
+    }).catch(err => console.error(err));
+
+    // Submit the session
+    fetch(`http://localhost:8000/api/student/session/${sessionId}/submit`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-Session-Token': sessionToken,
+        'Content-Type': 'application/json'
+      },
+      keepalive: true
+    }).catch(err => console.error(err));
+  };
+
+  const enterFullscreen = async () => {
+    try {
+      const element = document.documentElement;
+      if (element.requestFullscreen) {
+        await element.requestFullscreen();
+      } else if (element.webkitRequestFullscreen) {
+        await element.webkitRequestFullscreen();
+      } else if (element.msRequestFullscreen) {
+        await element.msRequestFullscreen();
+      }
+      setFullscreenRequired(false);
+    } catch (err) {
+      console.error("Failed to enter fullscreen:", err);
+      alert("Failed to enter full screen. Please ensure your browser supports fullscreen mode.");
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement) {
+        // Exited fullscreen!
+        setFullscreenRequired(true);
+        if (sessionId) {
+          proctorApi.logEvent(sessionId, 'fullscreen_exit', 'Student exited full screen mode.');
+          triggerLocalWarning('Exited full screen mode! This event has been flagged.');
+          
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+              violations: ["fullscreen_exit"],
+              description: "Student exited full screen mode.",
+              suspicion_score: Math.min(suspicionScoreRef.current + 15.0, 100.0)
+            }));
+          }
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, [sessionId]);
+
   // 1. Initial Load & Setup
   useEffect(() => {
     startSession();
@@ -201,8 +283,32 @@ export default function ExamPage() {
       clearInterval(proctorLoopRef.current);
       clearInterval(autoSaveIntervalRef.current);
       stopWebcam();
+      
+      // Auto-submit if student is leaving page via router / client-side navigation
+      if (!submittedRef.current) {
+        submittedRef.current = true;
+        submitWithKeepAlive();
+      }
     };
   }, []);
+
+  // Listen to beforeunload / unload to submit session if tab/browser is closed/reloaded
+  useEffect(() => {
+    const handleUnload = () => {
+      if (!submittedRef.current) {
+        submittedRef.current = true;
+        submitWithKeepAlive();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('unload', handleUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('unload', handleUnload);
+    };
+  }, [sessionId]);
 
   const startSession = async () => {
     try {
@@ -338,15 +444,38 @@ export default function ExamPage() {
   // 4. Webcam Stream
   const initWebcam = async (sid) => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+      console.log("Attempting to access webcam with ideal constraints...");
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: { ideal: 320 }, 
+            height: { ideal: 240 } 
+          } 
+        });
+      } catch (firstErr) {
+        console.warn("Webcam access with ideal constraints failed, falling back to simple video:true...", firstErr);
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCamStatus('active');
+        console.log("Webcam stream initialized successfully.");
       }
     } catch (err) {
+      console.error("Webcam initialization failed:", err);
       setCamStatus('error');
-      proctorApi.logEvent(sid, 'cam_error', 'Webcam connection blocked or unavailable.');
-      triggerLocalWarning('Webcam access was denied. Exam monitoring requires camera access!');
+      proctorApi.logEvent(sid, 'cam_error', `Webcam error: ${err.name} - ${err.message}`);
+      
+      let warningMsg = 'Webcam access was denied. Exam monitoring requires camera access!';
+      if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        warningMsg = 'No camera device found. Please connect a webcam to continue!';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        warningMsg = 'Camera is already in use by another application. Please close other apps using the camera!';
+      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        warningMsg = 'Camera permission was denied. Please allow camera access in your browser settings!';
+      }
+      triggerLocalWarning(warningMsg);
     }
   };
 
@@ -621,6 +750,7 @@ export default function ExamPage() {
 
   // 6. Submissions
   const handleAutoSubmit = async (sid) => {
+    submittedRef.current = true;
     stopWebcam();
     try {
       await studentApi.saveAnswers(sid, answersRef.current);
@@ -635,6 +765,7 @@ export default function ExamPage() {
   const handleManualSubmit = async () => {
     if (!confirm('Are you sure you want to finish and submit your exam? You cannot modify your answers after this.')) return;
     
+    submittedRef.current = true;
     stopWebcam();
     try {
       setLoading(true);
@@ -643,6 +774,7 @@ export default function ExamPage() {
       alert('Exam submitted successfully.');
       router.push('/student');
     } catch (err) {
+      submittedRef.current = false;
       alert('Failed to submit exam: ' + (err.response?.data?.detail || err.message));
       setLoading(false);
     }
@@ -689,6 +821,65 @@ export default function ExamPage() {
 
   const currentQ = questions[currentIdx];
   const totalQ = questions.length;
+
+  if (fullscreenRequired) {
+    return (
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(6, 9, 19, 0.95)',
+        backdropFilter: 'blur(12px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 99999,
+        padding: '2rem'
+      }}>
+        <div className="glass-panel" style={{
+          maxWidth: '550px',
+          width: '100%',
+          padding: '3rem',
+          textAlign: 'center',
+          border: '1px solid rgba(0, 242, 254, 0.3)',
+          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(0, 242, 254, 0.05) 100%)',
+          boxShadow: '0 20px 40px rgba(0, 242, 254, 0.1)'
+        }}>
+          <ShieldAlert size={56} style={{ color: 'var(--accent-cyan)', marginBottom: '1.5rem', margin: '0 auto' }} />
+          <h2 style={{ fontSize: '1.6rem', fontWeight: '800', marginBottom: '1rem', color: 'white' }}>
+            Full Screen Mode Required
+          </h2>
+          <p style={{ color: 'var(--text-primary)', marginBottom: '2rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
+            This exam is AI-proctored. To maintain examination integrity, you are required to remain in full screen mode for the entire duration of the test.
+          </p>
+          <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '1rem', marginBottom: '2.5rem', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold', color: 'var(--accent-rose)' }}>🚨 STRICT RULES:</p>
+            <ul style={{ paddingLeft: '1.25rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              <li>Exiting full screen will be logged as a proctoring violation.</li>
+              <li>Multiple violations will increase your suspicion score and flag your exam.</li>
+              <li>Please close other tabs and apps before beginning.</li>
+            </ul>
+          </div>
+          <button
+            onClick={enterFullscreen}
+            className="btn-primary"
+            style={{
+              width: '100%',
+              background: 'linear-gradient(135deg, var(--accent-cyan), #00b4d8)',
+              color: '#0b0f19',
+              border: 'none',
+              padding: '1rem',
+              fontWeight: '800',
+              fontSize: '1rem',
+              borderRadius: '8px',
+              cursor: 'pointer'
+            }}
+          >
+            Enter Full Screen & Begin Exam
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>

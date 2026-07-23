@@ -51,6 +51,8 @@ def log_proctoring_event(
         penalty = 10.0
     elif payload.event_type == "cam_error":
         penalty = 5.0
+    elif payload.event_type == "fullscreen_exit":
+        penalty = 15.0
         
     # Update session score
     session.proctoring_suspicion_score = min(session.proctoring_suspicion_score + penalty, 100.0)
@@ -167,6 +169,8 @@ async def proctor_websocket(websocket: WebSocket, session_id: int):
                             penalty += 25.0
                         elif violation == "gaze_away":
                             penalty += 5.0
+                        elif violation == "fullscreen_exit":
+                            penalty += 15.0
                     session.proctoring_suspicion_score = min(session.proctoring_suspicion_score + penalty, 100.0)
 
                 if violations:

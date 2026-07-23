@@ -37,7 +37,6 @@ export default function StudentPage() {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'active':
-        return <span className="badge badge-amber">Active / In Progress</span>;
       case 'submitted':
       case 'timed_out':
         return <span className="badge badge-emerald">Submitted</span>;
@@ -126,12 +125,7 @@ export default function StudentPage() {
                       <Play size={16} /> Start Exam
                     </button>
                   )}
-                  {ex.status === 'active' && (
-                    <button onClick={() => router.push(`/student/exam/${ex.exam_id}`)} className="btn-primary" style={{ width: '100%', background: 'linear-gradient(135deg, var(--accent-amber), #d97706)' }}>
-                      <Play size={16} /> Resume Session
-                    </button>
-                  )}
-                  {(ex.status === 'submitted' || ex.status === 'timed_out') && (
+                  {(ex.status === 'submitted' || ex.status === 'timed_out' || ex.status === 'active') && (
                     <button onClick={() => router.push(`/student/results/${ex.session_id}`)} className="btn-secondary" style={{ width: '100%', display: 'flex', gap: '0.5rem', color: 'var(--accent-cyan)' }}>
                       <CheckCircle size={16} /> View Score & Feedback <ArrowRight size={16} />
                     </button>
