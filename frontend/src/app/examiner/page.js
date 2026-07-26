@@ -74,6 +74,16 @@ export default function ExaminerDashboard() {
     fetchDashboardStats();
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+
+    const interval = setInterval(() => {
+      fetchDashboardStats();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
   const showFeedback = (msg, isSuccess = true) => {
     if (isSuccess) {
       setSuccess(msg);

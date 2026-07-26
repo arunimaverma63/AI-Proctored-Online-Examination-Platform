@@ -83,6 +83,16 @@ export default function ExamPage() {
   const suspicionScoreRef = useRef(0);
   const submittedRef = useRef(false);
 
+  const sendWsMessage = (payload) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const sessionToken = localStorage.getItem('session_token');
+      wsRef.current.send(JSON.stringify({
+        ...payload,
+        session_token: sessionToken
+      }));
+    }
+  };
+
   // Synchronize refs for event handlers
   useEffect(() => {
     answersRef.current = answers;
@@ -251,13 +261,11 @@ export default function ExamPage() {
           proctorApi.logEvent(sessionId, 'fullscreen_exit', 'Student exited full screen mode.');
           triggerLocalWarning('Exited full screen mode! This event has been flagged.');
           
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              violations: ["fullscreen_exit"],
-              description: "Student exited full screen mode.",
-              suspicion_score: Math.min(suspicionScoreRef.current + 15.0, 100.0)
-            }));
-          }
+          sendWsMessage({
+            violations: ["fullscreen_exit"],
+            description: "Student exited full screen mode.",
+            suspicion_score: Math.min(suspicionScoreRef.current + 15.0, 100.0)
+          });
         }
       }
     };
@@ -310,6 +318,12 @@ export default function ExamPage() {
     };
   }, [sessionId]);
 
+  useEffect(() => {
+    if (!loading && sessionId && camStatus === 'initializing') {
+      initWebcam(sessionId);
+    }
+  }, [loading, sessionId, camStatus]);
+
   const startSession = async () => {
     try {
       setLoading(true);
@@ -339,9 +353,6 @@ export default function ExamPage() {
           return prev - 1;
         });
       }, 1000);
-
-      // Start webcam stream
-      initWebcam(session_id);
 
       // Setup tab change, right click, and copy/paste security logging
       setupBrowserListeners(session_id);
@@ -374,13 +385,11 @@ export default function ExamPage() {
         proctorApi.logEvent(sid, 'tab_switch', 'Student switched browser tab.');
         triggerLocalWarning('Tab switch detected. This event has been flagged to the examiner!');
         
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
-            violations: ["tab_switch"],
-            description: "Student switched browser tab.",
-            suspicion_score: Math.min(suspicionScoreRef.current + 10.0, 100.0)
-          }));
-        }
+        sendWsMessage({
+          violations: ["tab_switch"],
+          description: "Student switched browser tab.",
+          suspicion_score: Math.min(suspicionScoreRef.current + 10.0, 100.0)
+        });
       }
     };
 
@@ -388,13 +397,11 @@ export default function ExamPage() {
       proctorApi.logEvent(sid, 'window_blur', 'Student left the exam window.');
       triggerLocalWarning('Window focus lost. Please stay on the examination screen!');
 
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          violations: ["window_blur"],
-          description: "Student left the exam window.",
-          suspicion_score: Math.min(suspicionScoreRef.current + 10.0, 100.0)
-        }));
-      }
+      sendWsMessage({
+        violations: ["window_blur"],
+        description: "Student left the exam window.",
+        suspicion_score: Math.min(suspicionScoreRef.current + 10.0, 100.0)
+      });
     };
 
     const preventDefault = (e) => {
@@ -407,13 +414,11 @@ export default function ExamPage() {
       triggerLocalWarning(`Action '${action}' is disabled during this exam!`);
       proctorApi.logEvent(sid, 'security_violation', `Student attempted to ${action} text.`);
       
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          violations: ["security_violation"],
-          description: `Security event: Student attempted to ${action} text.`,
-          suspicion_score: Math.min(suspicionScoreRef.current + 10.0, 100.0)
-        }));
-      }
+      sendWsMessage({
+        violations: ["security_violation"],
+        description: `Security event: Student attempted to ${action} text.`,
+        suspicion_score: Math.min(suspicionScoreRef.current + 10.0, 100.0)
+      });
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -546,65 +551,117 @@ export default function ExamPage() {
     }, 2000);
   };
 
-  const sendHeartbeat = () => {
+  const sendHeartbeat = async () => {
     const currentViolations = tempViolationsRef.current;
     tempViolationsRef.current = []; // Reset for next window
 
     if (currentViolations.length > 0) {
-      if (violationCount === 0) {
-        // First violation: show warning modal, do not increment score
-        setViolationCount(1);
-        let msg = "Webcam monitoring alert. Please maintain focus on the exam.";
-        if (currentViolations.includes("face_missing")) {
-          msg = "Face absent detected. Ensure you are fully visible in the camera frame.";
-        } else if (currentViolations.includes("multiple_faces")) {
-          msg = "Multiple people detected. Only the student is allowed in the camera frame.";
-        } else if (currentViolations.includes("gaze_away")) {
-          msg = "Looking away detected. Keep your gaze directed at the exam screen.";
+      let base64Image = null;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (video && canvas && camStatus === 'active') {
+        try {
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          base64Image = canvas.toDataURL('image/jpeg', 0.8);
+        } catch (canvasErr) {
+          console.error("Failed to capture canvas frame:", canvasErr);
+        }
+      }
+
+      if (base64Image) {
+        let nextScore = suspicionScoreRef.current;
+        // Upload snapshot with screenshot to backend REST endpoint
+        try {
+          const res = await proctorApi.sendSnapshot(sessionId, base64Image);
+          console.log("Proctor snapshot uploaded successfully:", res.data);
+          if (res.data.suspicion_score !== undefined) {
+            nextScore = res.data.suspicion_score;
+            setSuspicionScore(nextScore);
+          }
+        } catch (err) {
+          console.error("Failed to upload proctor snapshot:", err);
         }
 
-        setWarningModalMsg(msg);
-        setShowWarningModal(true);
+        // Show UI feedback
+        if (violationCount === 0) {
+          setViolationCount(1);
+          let msg = "Webcam monitoring alert. Please maintain focus on the exam.";
+          if (currentViolations.includes("face_missing")) {
+            msg = "Face absent detected. Ensure you are fully visible in the camera frame.";
+          } else if (currentViolations.includes("multiple_faces")) {
+            msg = "Multiple people detected. Only the student is allowed in the camera frame.";
+          } else if (currentViolations.includes("gaze_away")) {
+            msg = "Looking away detected. Keep your gaze directed at the exam screen.";
+          }
+          setWarningModalMsg(msg);
+          setShowWarningModal(true);
+          triggerLocalWarning(`Violation warning overlay triggered: ${currentViolations.join(', ')}`);
+        } else {
+          let penalty = 0.0;
+          currentViolations.forEach(v => {
+            if (v === "face_missing") penalty += 15.0;
+            if (v === "multiple_faces") penalty += 25.0;
+            if (v === "gaze_away") penalty += 5.0;
+          });
+          triggerLocalWarning(`Proctor event flagged: ${currentViolations.join(', ')} (Suspicion: +${penalty}%)`);
+        }
 
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
+        // Send a clean heartbeat over WebSocket to avoid duplicate DB logs
+        sendWsMessage({
+          violations: [],
+          description: `Snapshot processed for: ${currentViolations.join(', ')}`,
+          suspicion_score: nextScore
+        });
+      } else {
+        // Fallback: If camera is blocked/inactive, we log violations textually over WebSocket
+        if (violationCount === 0) {
+          setViolationCount(1);
+          let msg = "Webcam monitoring alert. Please maintain focus on the exam.";
+          if (currentViolations.includes("face_missing")) {
+            msg = "Face absent detected. Ensure you are fully visible in the camera frame.";
+          } else if (currentViolations.includes("multiple_faces")) {
+            msg = "Multiple people detected. Only the student is allowed in the camera frame.";
+          } else if (currentViolations.includes("gaze_away")) {
+            msg = "Looking away detected. Keep your gaze directed at the exam screen.";
+          }
+
+          setWarningModalMsg(msg);
+          setShowWarningModal(true);
+
+          sendWsMessage({
             violations: currentViolations,
             description: `First warning modal shown: ${msg}`,
             suspicion_score: suspicionScore
-          }));
-        }
-        triggerLocalWarning(`Violation warning overlay triggered: ${currentViolations.join(', ')}`);
-      } else {
-        // Subsequent violations: increment suspicion score
-        let penalty = 0.0;
-        currentViolations.forEach(v => {
-          if (v === "face_missing") penalty += 15.0;
-          if (v === "multiple_faces") penalty += 25.0;
-          if (v === "gaze_away") penalty += 5.0;
-        });
+          });
+          triggerLocalWarning(`Violation warning overlay triggered: ${currentViolations.join(', ')}`);
+        } else {
+          let penalty = 0.0;
+          currentViolations.forEach(v => {
+            if (v === "face_missing") penalty += 15.0;
+            if (v === "multiple_faces") penalty += 25.0;
+            if (v === "gaze_away") penalty += 5.0;
+          });
 
-        setSuspicionScore((prev) => {
-          const nextScore = Math.min(prev + penalty, 100.0);
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
+          setSuspicionScore((prev) => {
+            const nextScore = Math.min(prev + penalty, 100.0);
+            sendWsMessage({
               violations: currentViolations,
               description: `Subsequent violations detected: ${currentViolations.join(', ')}`,
               suspicion_score: nextScore
-            }));
-          }
-          triggerLocalWarning(`Proctor event flagged: ${currentViolations.join(', ')} (Suspicion: +${penalty}%)`);
-          return nextScore;
-        });
+            });
+            triggerLocalWarning(`Proctor event flagged: ${currentViolations.join(', ')} (Suspicion: +${penalty}%)`);
+            return nextScore;
+          });
+        }
       }
     } else {
       // Send regular keep-alive heartbeat
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          violations: [],
-          description: "Heartbeat: normal",
-          suspicion_score: suspicionScore
-        }));
-      }
+      sendWsMessage({
+        violations: [],
+        description: "Heartbeat: normal",
+        suspicion_score: suspicionScore
+      });
     }
   };
 
@@ -822,64 +879,7 @@ export default function ExamPage() {
   const currentQ = questions[currentIdx];
   const totalQ = questions.length;
 
-  if (fullscreenRequired) {
-    return (
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(6, 9, 19, 0.95)',
-        backdropFilter: 'blur(12px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 99999,
-        padding: '2rem'
-      }}>
-        <div className="glass-panel" style={{
-          maxWidth: '550px',
-          width: '100%',
-          padding: '3rem',
-          textAlign: 'center',
-          border: '1px solid rgba(0, 242, 254, 0.3)',
-          background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(0, 242, 254, 0.05) 100%)',
-          boxShadow: '0 20px 40px rgba(0, 242, 254, 0.1)'
-        }}>
-          <ShieldAlert size={56} style={{ color: 'var(--accent-cyan)', marginBottom: '1.5rem', margin: '0 auto' }} />
-          <h2 style={{ fontSize: '1.6rem', fontWeight: '800', marginBottom: '1rem', color: 'white' }}>
-            Full Screen Mode Required
-          </h2>
-          <p style={{ color: 'var(--text-primary)', marginBottom: '2rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
-            This exam is AI-proctored. To maintain examination integrity, you are required to remain in full screen mode for the entire duration of the test.
-          </p>
-          <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '1rem', marginBottom: '2.5rem', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold', color: 'var(--accent-rose)' }}>🚨 STRICT RULES:</p>
-            <ul style={{ paddingLeft: '1.25rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              <li>Exiting full screen will be logged as a proctoring violation.</li>
-              <li>Multiple violations will increase your suspicion score and flag your exam.</li>
-              <li>Please close other tabs and apps before beginning.</li>
-            </ul>
-          </div>
-          <button
-            onClick={enterFullscreen}
-            className="btn-primary"
-            style={{
-              width: '100%',
-              background: 'linear-gradient(135deg, var(--accent-cyan), #00b4d8)',
-              color: '#0b0f19',
-              border: 'none',
-              padding: '1rem',
-              fontWeight: '800',
-              fontSize: '1rem',
-              borderRadius: '8px',
-              cursor: 'pointer'
-            }}
-          >
-            Enter Full Screen & Begin Exam
-          </button>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -1492,6 +1492,64 @@ export default function ExamPage() {
               }}
             >
               I Understand & Acknowledge
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Full Screen Mode Required Overlay */}
+      {fullscreenRequired && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(6, 9, 19, 0.95)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '2rem'
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: '550px',
+            width: '100%',
+            padding: '3rem',
+            textAlign: 'center',
+            border: '1px solid rgba(0, 242, 254, 0.3)',
+            background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(0, 242, 254, 0.05) 100%)',
+            boxShadow: '0 20px 40px rgba(0, 242, 254, 0.1)'
+          }}>
+            <ShieldAlert size={56} style={{ color: 'var(--accent-cyan)', marginBottom: '1.5rem', margin: '0 auto' }} />
+            <h2 style={{ fontSize: '1.6rem', fontWeight: '800', marginBottom: '1rem', color: 'white' }}>
+              Full Screen Mode Required
+            </h2>
+            <p style={{ color: 'var(--text-primary)', marginBottom: '2rem', lineHeight: '1.6', fontSize: '0.95rem' }}>
+              This exam is AI-proctored. To maintain examination integrity, you are required to remain in full screen mode for the entire duration of the test.
+            </p>
+            <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '1rem', marginBottom: '2.5rem', textAlign: 'left', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold', color: 'var(--accent-rose)' }}>🚨 STRICT RULES:</p>
+              <ul style={{ paddingLeft: '1.25rem', margin: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <li>Exiting full screen will be logged as a proctoring violation.</li>
+                <li>Multiple violations will increase your suspicion score and flag your exam.</li>
+                <li>Please close other tabs and apps before beginning.</li>
+              </ul>
+            </div>
+            <button
+              onClick={enterFullscreen}
+              className="btn-primary"
+              style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, var(--accent-cyan), #00b4d8)',
+                color: '#0b0f19',
+                border: 'none',
+                padding: '1rem',
+                fontWeight: '800',
+                fontSize: '1rem',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              Enter Full Screen & Begin Exam
             </button>
           </div>
         </div>

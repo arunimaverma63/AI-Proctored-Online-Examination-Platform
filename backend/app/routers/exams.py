@@ -265,11 +265,15 @@ def start_exam_session(
             db.refresh(session)
             background_tasks.add_task(run_ai_evaluations, session.id, db)
             
-        # We do not allow resuming or restarting a session under any circumstances
-        raise HTTPException(
-            status_code=400, 
-            detail="This exam has already been started and can only be taken once."
-        )
+        if session.status == "active":
+            # Resume existing active session
+            pass
+        else:
+            # We do not allow restarting a session under any circumstances if it's already finished/timed out
+            raise HTTPException(
+                status_code=400, 
+                detail="This exam has already been started and can only be taken once."
+            )
     else:
         # Create new active exam session
         end_time = now + timedelta(minutes=exam.duration_minutes)
@@ -291,9 +295,9 @@ def start_exam_session(
         db.commit()
         db.refresh(session)
         
-    # Schedule the auto-submit job via APScheduler
-    from app.services.scheduler import schedule_auto_submit
-    schedule_auto_submit(session.id, session.end_time)
+        # Schedule the auto-submit job via APScheduler
+        from app.services.scheduler import schedule_auto_submit
+        schedule_auto_submit(session.id, session.end_time)
         
     # Generate/Fetch questions
     questions = db.query(Question).filter(Question.subject_id == exam.subject_id).all()
