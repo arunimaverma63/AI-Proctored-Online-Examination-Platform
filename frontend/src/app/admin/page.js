@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '../components/Navbar';
+import { useLanguage } from '../components/LanguageContext';
 import { subjectApi, questionApi, examApi } from '../../api';
 import { 
   BookOpen, HelpCircle, Calendar, Plus, Trash2, ShieldAlert, Award, 
@@ -13,6 +14,7 @@ import {
 
 export default function AdminPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
@@ -34,6 +36,102 @@ export default function AdminPage() {
   const [qPoints, setQPoints] = useState(1.0);
   const [qRefFile, setQRefFile] = useState(null);
   const [uploadingRefFile, setUploadingRefFile] = useState(false);
+
+  // PWA & Core Admin Page missing states
+  const [exams, setExams] = useState([]);
+  const [exTitle, setExTitle] = useState('');
+  const [exSubjectId, setExSubjectId] = useState('');
+  const [exDuration, setExDuration] = useState(60);
+  const [exCount, setExCount] = useState(10);
+  const [exNegative, setExNegative] = useState(0.0);
+  const [exRandomQ, setExRandomQ] = useState(true);
+  const [exRandomO, setExRandomO] = useState(true);
+  const [exStart, setExStart] = useState('');
+  const [exEnd, setExEnd] = useState('');
+
+  useEffect(() => {
+    fetchData();
+    fetchDashboardStats();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'dashboard') return;
+
+    const interval = setInterval(() => {
+      fetchDashboardStats();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
+  const showFeedback = (msg, isSuccess = true) => {
+    if (isSuccess) {
+      setSuccess(msg);
+      setError('');
+    } else {
+      setError(msg);
+      setSuccess('');
+    }
+    setTimeout(() => {
+      setSuccess('');
+      setError('');
+    }, 5000);
+  };
+
+  const fetchDashboardStats = async () => {
+    try {
+      setStatsLoading(true);
+      const res = await examApi.getDashboardStats();
+      setStats(res.data);
+    } catch (err) {
+      console.error('Failed to fetch dashboard stats:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      const subjectsRes = await subjectApi.list();
+      setSubjects(subjectsRes.data);
+      if (subjectsRes.data.length > 0) {
+        setQSubjectId(subjectsRes.data[0].id.toString());
+        setExSubjectId(subjectsRes.data[0].id.toString());
+      }
+
+      const questionsRes = await questionApi.list();
+      setQuestions(questionsRes.data);
+
+      const examsRes = await examApi.list();
+      setExams(examsRes.data);
+    } catch (err) {
+      setError('Failed to fetch data from API');
+    }
+  };
+
+  const handleAddSubject = async (e) => {
+    e.preventDefault();
+    if (!newSubject.trim()) return;
+    try {
+      await subjectApi.create(newSubject.trim());
+      setNewSubject('');
+      showFeedback('Subject created successfully');
+      fetchData();
+    } catch (err) {
+      showFeedback(err.response?.data?.detail || 'Failed to create subject', false);
+    }
+  };
+
+  const handleDeleteSubject = async (id) => {
+    if (!confirm('Are you sure you want to delete this subject? All related questions and exams will be deleted.')) return;
+    try {
+      await subjectApi.delete(id);
+      showFeedback('Subject deleted successfully');
+      fetchData();
+    } catch (err) {
+      showFeedback('Failed to delete subject', false);
+    }
+  };
 
   const handleRefFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -235,9 +333,9 @@ export default function AdminPage() {
             alignItems: 'center'
           }}>
             <div>
-              <h1 style={{ fontSize: '1.8rem', fontWeight: '800' }}>Admin Console</h1>
+              <h1 style={{ fontSize: '1.8rem', fontWeight: '800' }}>{t('Admin Console')}</h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-                Manage subjects, build your question bank, and schedule AI-proctored examinations.
+                {t('Manage subjects, build your question bank, and schedule AI-proctored examinations.')}
               </p>
             </div>
           </div>
@@ -246,12 +344,12 @@ export default function AdminPage() {
         {/* Feedback alerts */}
         {success && (
           <div className="badge-emerald animate-fade-in" style={{ padding: '0.8rem 1.2rem', borderRadius: '8px', fontSize: '0.9rem', width: '100%', marginBottom: '1.5rem' }}>
-            {success}
+            {t(success)}
           </div>
         )}
         {error && (
           <div className="badge-rose animate-fade-in" style={{ padding: '0.8rem 1.2rem', borderRadius: '8px', fontSize: '0.9rem', width: '100%', marginBottom: '1.5rem' }}>
-            {error}
+            {t(error)}
           </div>
         )}
 
@@ -262,28 +360,28 @@ export default function AdminPage() {
             className={activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
           >
-            <Activity size={18} /> Dashboard
+            <Activity size={18} /> {t('Dashboard')}
           </button>
           <button
             onClick={() => setActiveTab('subjects')}
             className={activeTab === 'subjects' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
           >
-            <BookOpen size={18} /> Subjects
+            <BookOpen size={18} /> {t('Subjects')}
           </button>
           <button
             onClick={() => setActiveTab('questions')}
             className={activeTab === 'questions' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
           >
-            <HelpCircle size={18} /> Question Bank
+            <HelpCircle size={18} /> {t('Question Bank')}
           </button>
           <button
             onClick={() => setActiveTab('exams')}
             className={activeTab === 'exams' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
           >
-            <Calendar size={18} /> Exams Scheduler
+            <Calendar size={18} /> {t('Exams Scheduler')}
           </button>
         </div>
 
@@ -294,7 +392,7 @@ export default function AdminPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.025em' }}>Admin Dashboard</h1>
+                  <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.025em' }}>{t('Admin Dashboard')}</h1>
                   <span className="badge" style={{ 
                     display: 'inline-flex', 
                     alignItems: 'center', 
@@ -316,22 +414,22 @@ export default function AdminPage() {
                       boxShadow: '0 0 8px #10b981',
                       animation: 'pulse 2s infinite ease-in-out'
                     }}></span>
-                    LIVE
+                    {t('LIVE')}
                   </span>
                 </div>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.2rem' }}>AI-Proctored Examination Platform Real-time Monitor</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.2rem' }}>{t('AI-Proctored Online Examination Platform')}</p>
               </div>
               
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                 <button onClick={fetchDashboardStats} className="btn-secondary" style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                  <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} /> Refresh Stats
+                  <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} /> {t('Refresh Stats')}
                 </button>
                 <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-glass)', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Calendar size={14} style={{ color: 'var(--accent-cyan)' }} />
                   <span>{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
                 </div>
                 <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid var(--border-glass)', padding: '0.6rem 1rem', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  <span>Filters</span>
+                  <span>{t('Filters')}</span>
                 </div>
               </div>
             </div>
@@ -340,43 +438,43 @@ export default function AdminPage() {
             <div className="dashboard-metrics-grid">
               {/* Active Sessions */}
               <div className="glass-card" style={{ background: '#111827', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>active sessions</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>{t('active sessions')}</span>
                 <span style={{ fontSize: '2.5rem', fontWeight: '800', lineHeight: 1 }}>{displayStats.active_sessions}</span>
                 {displayStats.active_sessions > 0 ? (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)', fontWeight: '600' }}>● monitoring live</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-emerald)', fontWeight: '600' }}>● {t('monitoring live')}</span>
                 ) : (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '500' }}>no active sessions</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '500' }}>{t('no active sessions')}</span>
                 )}
               </div>
 
               {/* Exams Today */}
               <div className="glass-card" style={{ background: '#111827', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>exams today</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>{t('exams today')}</span>
                 <span style={{ fontSize: '2.5rem', fontWeight: '800', lineHeight: 1 }}>{displayStats.exams_today}</span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>{displayStats.completed_exams_today} completed</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>{displayStats.completed_exams_today} {t('completed')}</span>
               </div>
 
               {/* Flagged Sessions */}
               <div className="glass-card" style={{ background: '#111827', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>flagged sessions</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>{t('flagged sessions')}</span>
                 <span style={{ fontSize: '2.5rem', fontWeight: '800', lineHeight: 1, color: 'var(--accent-rose)' }}>{displayStats.flagged_sessions}</span>
                 {displayStats.flagged_sessions > 0 ? (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-rose)', fontWeight: '600' }}>requires attention</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--accent-rose)', fontWeight: '600' }}>{t('requires attention')}</span>
                 ) : (
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '500' }}>no flags</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '500' }}>{t('no flags')}</span>
                 )}
               </div>
 
               {/* Grading Queue */}
               <div className="glass-card" style={{ background: '#111827', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>grading queue</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>{t('grading queue')}</span>
                 <span style={{ fontSize: '2.5rem', fontWeight: '800', lineHeight: 1 }}>{displayStats.grading_queue}</span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>AI pre-scored {displayStats.ai_prescored}</span>
               </div>
 
               {/* Avg Score */}
               <div className="glass-card" style={{ background: '#111827', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>avg score</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'lowercase' }}>{t('avg score')}</span>
                 <div style={{ display: 'flex', alignItems: 'baseline' }}>
                   <span style={{ fontSize: '2.5rem', fontWeight: '800', lineHeight: 1 }}>{displayStats.avg_score}</span>
                   <span style={{ fontSize: '1.25rem', color: 'var(--text-secondary)', marginLeft: '0.2rem' }}>%</span>

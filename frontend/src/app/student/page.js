@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import Navbar from '../components/Navbar';
 import { studentApi } from '../../api';
 import { BookOpen, Clock, AlertTriangle, Play, CheckCircle, ArrowRight } from 'lucide-react';
+import { useLanguage } from '../components/LanguageContext';
 
 export default function StudentPage() {
   const [exams, setExams] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { t } = useLanguage();
 
   useEffect(() => {
     fetchExams();
@@ -22,14 +24,14 @@ export default function StudentPage() {
       const res = await studentApi.getExamsList();
       setExams(res.data);
     } catch (err) {
-      setError('Failed to load scheduled exams list. Please login again.');
+      setError(t('Failed to load scheduled exams list. Please login again.'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleStartExam = (examId) => {
-    if (confirm('Are you ready to start the exam? Your webcam monitoring and browser focus tracking will begin immediately.')) {
+    if (confirm(t('Are you ready to start the exam? Your webcam monitoring and browser focus tracking will begin immediately.'))) {
       router.push(`/student/exam/${examId}`);
     }
   };
@@ -39,13 +41,13 @@ export default function StudentPage() {
       case 'active':
       case 'submitted':
       case 'timed_out':
-        return <span className="badge badge-emerald">Submitted</span>;
+        return <span className="badge badge-emerald">{t('Submitted')}</span>;
       case 'available':
-        return <span className="badge badge-cyan">Available</span>;
+        return <span className="badge badge-cyan">{t('Available')}</span>;
       case 'expired':
-        return <span className="badge badge-rose">Expired</span>;
+        return <span className="badge badge-rose">{t('Expired')}</span>;
       default:
-        return <span className="badge badge-purple">Scheduled</span>;
+        return <span className="badge badge-purple">{t('Scheduled')}</span>;
     }
   };
 
@@ -63,10 +65,10 @@ export default function StudentPage() {
           overflow: 'hidden'
         }}>
           <h1 style={{ fontSize: '2rem', fontWeight: '800', marginBottom: '0.5rem' }}>
-            Welcome to your Examination Portal
+            {t('Welcome to your Examination Portal')}
           </h1>
           <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', fontSize: '0.95rem' }}>
-            Please select an exam below. Ensure your webcam is enabled and you maintain window focus throughout your examination window.
+            {t('Please select an exam below. Ensure your webcam is enabled and you maintain window focus throughout your examination window.')}
           </p>
         </div>
 
@@ -78,16 +80,16 @@ export default function StudentPage() {
 
         <h2 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Clock size={22} style={{ color: 'var(--accent-cyan)' }} />
-          Your Exam Schedule
+          {t('Your Exam Schedule')}
         </h2>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-            Loading examinations list...
+            {t('Loading examinations list...')}
           </div>
         ) : exams.length === 0 ? (
           <div className="glass-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-            No exams scheduled at this time.
+            {t('No exams scheduled at this time.')}
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
@@ -111,10 +113,10 @@ export default function StudentPage() {
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Clock size={14} /> Duration: {ex.duration_minutes} Minutes
+                      <Clock size={14} /> {t('Duration:')} {ex.duration_minutes} {t('Minutes')}
                     </div>
                     <div>
-                      <strong>Scheduled:</strong> {new Date(ex.start_time).toLocaleString()}
+                      <strong>{t('Scheduled:')}</strong> {new Date(ex.start_time).toLocaleString()}
                     </div>
                   </div>
                 </div>
@@ -122,22 +124,22 @@ export default function StudentPage() {
                 <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                   {ex.status === 'available' && (
                     <button onClick={() => handleStartExam(ex.exam_id)} className="btn-primary" style={{ width: '100%' }}>
-                      <Play size={16} /> Start Exam
+                      <Play size={16} /> {t('Start Exam')}
                     </button>
                   )}
                   {(ex.status === 'submitted' || ex.status === 'timed_out' || ex.status === 'active') && (
                     <button onClick={() => router.push(`/student/results/${ex.session_id}`)} className="btn-secondary" style={{ width: '100%', display: 'flex', gap: '0.5rem', color: 'var(--accent-cyan)' }}>
-                      <CheckCircle size={16} /> View Score & Feedback <ArrowRight size={16} />
+                      <CheckCircle size={16} /> {t('View Score & Feedback')} <ArrowRight size={16} />
                     </button>
                   )}
                   {ex.status === 'scheduled' && (
                     <button disabled className="btn-secondary" style={{ width: '100%', cursor: 'not-allowed', opacity: 0.6 }}>
-                      Not Started Yet
+                      {t('Not Started Yet')}
                     </button>
                   )}
                   {ex.status === 'expired' && (
                     <button disabled className="btn-secondary" style={{ width: '100%', cursor: 'not-allowed', opacity: 0.6, color: 'var(--accent-rose)' }}>
-                      Exam Window Expired
+                      {t('Exam Window Expired')}
                     </button>
                   )}
                 </div>

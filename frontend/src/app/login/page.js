@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '../../api';
-import { LogIn, UserPlus, ShieldAlert, Award, GraduationCap } from 'lucide-react';
+import { LogIn, UserPlus, ShieldAlert, Award, GraduationCap, Globe, ChevronDown, Check } from 'lucide-react';
+import { useLanguage } from '../components/LanguageContext';
 
 export default function LoginPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -14,11 +15,24 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
+  const { language, setLanguage, t } = useLanguage();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
   useEffect(() => {
     // Clear storage on mount
     localStorage.removeItem('token');
     localStorage.removeItem('username');
     localStorage.removeItem('role');
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!event.target.closest('.lang-selector-container')) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
   }, []);
 
   const handleSubmit = async (e) => {
@@ -62,6 +76,43 @@ export default function LoginPage() {
       padding: '1rem',
       position: 'relative'
     }}>
+      {/* Floating Language Selector */}
+      <div className="floating-lang-container">
+        <div className="lang-selector-container">
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className="lang-selector-btn"
+          >
+            <Globe size={14} />
+            <span>{language.toUpperCase()}</span>
+            <ChevronDown size={12} style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
+          
+          <div className={`lang-dropdown-menu ${dropdownOpen ? 'show' : ''}`}>
+            {[
+              { code: 'en', label: 'English' },
+              { code: 'hi', label: 'हिन्दी' },
+              { code: 'bn', label: 'বাংলা' },
+              { code: 'te', label: 'తెలుగు' },
+              { code: 'ta', label: 'தமிழ்' },
+              { code: 'mr', label: 'मराठी' }
+            ].map((lang) => (
+              <button
+                key={lang.code}
+                className={`lang-dropdown-item ${language === lang.code ? 'active' : ''}`}
+                onClick={() => {
+                  setLanguage(lang.code);
+                  setDropdownOpen(false);
+                }}
+              >
+                <span>{lang.label}</span>
+                {language === lang.code && <Check size={12} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="glass-panel animate-fade-in" style={{
         width: '100%',
         maxWidth: '450px',
@@ -84,7 +135,7 @@ export default function LoginPage() {
           ExamShield AI
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '2rem' }}>
-          AI-Proctored Online Examination Platform
+          {t('AI-Proctored Online Examination Platform')}
         </p>
 
         {error && (
@@ -99,19 +150,19 @@ export default function LoginPage() {
             textAlign: 'left'
           }}>
             <ShieldAlert size={18} style={{ flexShrink: 0 }} />
-            <span>{error}</span>
+            <span>{t(error)}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', textAlign: 'left' }}>
           <div>
             <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Username
+              {t('Username')}
             </label>
             <input
               type="text"
               className="glass-input"
-              placeholder="Enter username"
+              placeholder={t('Enter username')}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -120,12 +171,12 @@ export default function LoginPage() {
 
           <div>
             <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-              Password
+              {t('Password')}
             </label>
             <input
               type="password"
               className="glass-input"
-              placeholder="Enter password"
+              placeholder={t('Enter password')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -135,7 +186,7 @@ export default function LoginPage() {
           {!isLogin && (
             <div>
               <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Account Role
+                {t('Account Role')}
               </label>
               <select
                 className="glass-input"
@@ -143,21 +194,21 @@ export default function LoginPage() {
                 onChange={(e) => setRole(e.target.value)}
                 style={{ appearance: 'none', cursor: 'pointer' }}
               >
-                <option value="student">Student / Examinee</option>
-                <option value="examiner">Examiner / Grader</option>
-                <option value="admin">Platform Administrator</option>
+                <option value="student">{t('Student / Examinee')}</option>
+                <option value="examiner">{t('Examiner / Grader')}</option>
+                <option value="admin">{t('Platform Administrator')}</option>
               </select>
             </div>
           )}
 
           <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '0.5rem' }} disabled={loading}>
-            {loading ? 'Processing...' : isLogin ? (
+            {loading ? t('Processing...') : isLogin ? (
               <>
-                <LogIn size={18} /> Sign In
+                <LogIn size={18} /> {t('Sign In')}
               </>
             ) : (
               <>
-                <UserPlus size={18} /> Register Account
+                <UserPlus size={18} /> {t('Register Account')}
               </>
             )}
           </button>
@@ -179,17 +230,17 @@ export default function LoginPage() {
               textDecoration: 'underline'
             }}
           >
-            {isLogin ? "Don't have an account? Sign Up" : 'Already have an account? Sign In'}
+            {isLogin ? t("Don't have an account? Sign Up") : t('Already have an account? Sign In')}
           </button>
         </div>
 
         <div style={{ marginTop: '2rem', display: 'flex', justifyContent: 'center', gap: '1rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-            <Award size={14} /> Full Evaluation
+            <Award size={14} /> {t('Full Evaluation')}
           </div>
           <span>•</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-            <ShieldAlert size={14} /> Intelligent Proctoring
+            <ShieldAlert size={14} /> {t('Intelligent Proctoring')}
           </div>
         </div>
       </div>

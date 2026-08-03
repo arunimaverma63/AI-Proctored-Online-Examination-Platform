@@ -2,11 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, User, ShieldCheck } from 'lucide-react';
+import { LogOut, User, ShieldCheck, Globe, ChevronDown, Check } from 'lucide-react';
+import { useLanguage } from './LanguageContext';
 
 export default function Navbar() {
   const router = useRouter();
   const [user, setUser] = useState({ username: '', role: '' });
+  const { language, setLanguage, t } = useLanguage();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -20,6 +23,16 @@ export default function Navbar() {
     }
   }, [router]);
 
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!event.target.closest('.lang-selector-container')) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('username');
@@ -30,11 +43,11 @@ export default function Navbar() {
   const getRoleBadge = (role) => {
     switch (role) {
       case 'admin':
-        return <span className="badge badge-cyan">Admin</span>;
+        return <span className="badge badge-cyan">{t('Admin')}</span>;
       case 'examiner':
-        return <span className="badge badge-purple">Examiner</span>;
+        return <span className="badge badge-purple">{t('Examiner')}</span>;
       default:
-        return <span className="badge badge-emerald">Student</span>;
+        return <span className="badge badge-emerald">{t('Student')}</span>;
     }
   };
 
@@ -94,14 +107,50 @@ export default function Navbar() {
           </div>
         </div>
 
+        {/* Language Dropdown Selector */}
+        <div className="lang-selector-container">
+          <button
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+            className="lang-selector-btn"
+          >
+            <Globe size={14} />
+            <span>{language.toUpperCase()}</span>
+            <ChevronDown size={12} style={{ transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+          </button>
+          
+          <div className={`lang-dropdown-menu ${dropdownOpen ? 'show' : ''}`}>
+            {[
+              { code: 'en', label: 'English' },
+              { code: 'hi', label: 'हिन्दी' },
+              { code: 'bn', label: 'বাংলা' },
+              { code: 'te', label: 'తెలుగు' },
+              { code: 'ta', label: 'தமிழ்' },
+              { code: 'mr', label: 'मराठी' }
+            ].map((lang) => (
+              <button
+                key={lang.code}
+                className={`lang-dropdown-item ${language === lang.code ? 'active' : ''}`}
+                onClick={() => {
+                  setLanguage(lang.code);
+                  setDropdownOpen(false);
+                }}
+              >
+                <span>{lang.label}</span>
+                {language === lang.code && <Check size={12} />}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={handleLogout}
           className="btn-secondary"
           style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}
         >
-          <LogOut size={14} /> Log Out
+          <LogOut size={14} /> {t('Log Out')}
         </button>
       </div>
     </nav>
   );
 }
+

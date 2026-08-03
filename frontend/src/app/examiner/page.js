@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '../components/Navbar';
+import { useLanguage } from '../components/LanguageContext';
 import { gradingApi, subjectApi, questionApi, examApi } from '../../api';
 import { 
   ShieldAlert, Award, FileText, CheckCircle, Search, RefreshCw, 
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 
 export default function ExaminerDashboard() {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [submissions, setSubmissions] = useState([]);
   const [stats, setStats] = useState(null);
@@ -390,25 +392,25 @@ export default function ExaminerDashboard() {
           alignItems: 'center'
         }}>
           <div>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.025em' }}>Examiner Dashboard</h1>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.025em' }}>{t('Examiner Dashboard')}</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '0.2rem' }}>
-              Manage Question Bank, Schedule Exams, Monitor Live Sessions & Grade Papers.
+              {t('Grade student submissions, view AI proctoring logs, and manage exams/questions.')}
             </p>
           </div>
           <button onClick={() => { fetchData(); fetchDashboardStats(); }} className="btn-secondary" style={{ padding: '0.5rem 1rem' }}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Sync Data
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> {t('Sync Data')}
           </button>
         </div>
 
         {/* Feedback alerts */}
         {success && (
           <div className="badge-emerald animate-fade-in" style={{ padding: '0.8rem 1.2rem', borderRadius: '8px', fontSize: '0.9rem', width: '100%', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <CheckCircle size={16} /> {success}
+            <CheckCircle size={16} /> {t(success)}
           </div>
         )}
         {error && (
           <div className="badge-rose animate-fade-in" style={{ padding: '0.8rem 1.2rem', borderRadius: '8px', fontSize: '0.9rem', width: '100%', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <AlertTriangle size={16} /> {error}
+            <AlertTriangle size={16} /> {t(error)}
           </div>
         )}
 
@@ -419,42 +421,42 @@ export default function ExaminerDashboard() {
             className={activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: '1 0 150px', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}
           >
-            <Activity size={16} /> Overview & monitor
+            <Activity size={16} /> {t('Dashboard')}
           </button>
           <button
             onClick={() => setActiveTab('submissions')}
             className={activeTab === 'submissions' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: '1 0 150px', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}
           >
-            <FileText size={16} /> Grading & submissions
+            <FileText size={16} /> {t('Submissions')}
           </button>
           <button
             onClick={() => setActiveTab('subjects')}
             className={activeTab === 'subjects' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: '1 0 150px', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}
           >
-            <BookOpen size={16} /> Subjects
+            <BookOpen size={16} /> {t('Subjects')}
           </button>
           <button
             onClick={() => setActiveTab('questions')}
             className={activeTab === 'questions' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: '1 0 150px', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}
           >
-            <HelpCircle size={16} /> Question Bank
+            <HelpCircle size={16} /> {t('Question Bank')}
           </button>
           <button
             onClick={() => setActiveTab('exams')}
             className={activeTab === 'exams' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: '1 0 150px', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}
           >
-            <Calendar size={16} /> Exams Scheduler
+            <Calendar size={16} /> {t('Exams Scheduler')}
           </button>
           <button
             onClick={() => setActiveTab('exam_questions')}
             className={activeTab === 'exam_questions' ? 'btn-primary' : 'btn-secondary'}
             style={{ flex: '1 0 150px', display: 'flex', gap: '0.5rem', fontSize: '0.85rem' }}
           >
-            <Award size={16} /> Exam Questions
+            <Award size={16} /> {t('Exam Questions')}
           </button>
         </div>
 
@@ -465,33 +467,33 @@ export default function ExaminerDashboard() {
             {/* Live Metrics Grid */}
             <div className="dashboard-metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.25rem' }}>
               <div className="glass-panel" style={{ padding: '1.25rem', textAlign: 'left', background: 'rgba(20, 26, 45, 0.4)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Active Sessions</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'capitalize' }}>{t('active sessions')}</span>
                 <h1 style={{ fontSize: '2.2rem', fontWeight: '800', margin: '0.2rem 0' }}>{displayStats.active_sessions}</h1>
-                <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>Real-time Exam Taking</span>
+                <span className="badge badge-cyan" style={{ fontSize: '0.7rem' }}>{t('Real-time Exam Taking')}</span>
               </div>
 
               <div className="glass-panel" style={{ padding: '1.25rem', textAlign: 'left', background: 'rgba(20, 26, 45, 0.4)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Exams Scheduled Today</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'capitalize' }}>{t('exams today')}</span>
                 <h1 style={{ fontSize: '2.2rem', fontWeight: '800', margin: '0.2rem 0' }}>{displayStats.exams_today}</h1>
-                <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>{displayStats.completed_exams_today} Completed</span>
+                <span className="badge badge-purple" style={{ fontSize: '0.7rem' }}>{displayStats.completed_exams_today} {t('completed')}</span>
               </div>
 
               <div className="glass-panel" style={{ padding: '1.25rem', textAlign: 'left', background: 'rgba(20, 26, 45, 0.4)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Flagged Sessions</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'capitalize' }}>{t('flagged sessions')}</span>
                 <h1 style={{ fontSize: '2.2rem', fontWeight: '800', margin: '0.2rem 0', color: 'var(--accent-rose)' }}>{displayStats.flagged_sessions}</h1>
-                <span className="badge badge-rose" style={{ fontSize: '0.7rem' }}>Suspicion Score &gt; 40%</span>
+                <span className="badge badge-rose" style={{ fontSize: '0.7rem' }}>{t('Suspicion Score > 40%')}</span>
               </div>
 
               <div className="glass-panel" style={{ padding: '1.25rem', textAlign: 'left', background: 'rgba(20, 26, 45, 0.4)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Subjective Grading Queue</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'capitalize' }}>{t('grading queue')}</span>
                 <h1 style={{ fontSize: '2.2rem', fontWeight: '800', margin: '0.2rem 0' }}>{displayStats.grading_queue}</h1>
-                <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>AI Pre-graded: {displayStats.ai_prescored}</span>
+                <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>{t('AI Pre-graded:')} {displayStats.ai_prescored}</span>
               </div>
 
               <div className="glass-panel" style={{ padding: '1.25rem', textAlign: 'left', background: 'rgba(20, 26, 45, 0.4)' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>Average Cohort Score</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500', textTransform: 'capitalize' }}>{t('avg score')}</span>
                 <h1 style={{ fontSize: '2.2rem', fontWeight: '800', margin: '0.2rem 0', color: 'var(--accent-emerald)' }}>{displayStats.avg_score}%</h1>
-                <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>Updated just now</span>
+                <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>{t('Updated just now')}</span>
               </div>
             </div>
 
@@ -502,7 +504,7 @@ export default function ExaminerDashboard() {
               <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'left' }}>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: '800', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Activity size={18} style={{ color: 'var(--accent-cyan)' }} />
-                  Live Exam Sessions
+                  {t('LIVE')} {t('Exams')}
                 </h3>
                 {displayStats.live_sessions.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', padding: '2rem 0', textAlign: 'center' }}>No students are currently taking exams.</p>
