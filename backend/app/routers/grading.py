@@ -16,11 +16,28 @@ router = APIRouter(tags=["grading & results"])
 # ----------------- Examiner Grading Routes -----------------
 
 @router.get("/grading/submissions", dependencies=[Depends(verify_role(["examiner", "admin"]))])
-def get_submissions(db: Session = Depends(get_db)):
-    """List all exam sessions that have been submitted or timed out."""
-    sessions = db.query(ExamSession).filter(ExamSession.status.in_(["submitted", "timed_out"])).all()
+def get_submissions(status: str = None, db: Session = Depends(get_db)):
+    """List exam sessions, optionally filtered by status."""
+    query = db.query(ExamSession)
+    if status == "active":
+        sessions = query.filter(ExamSession.status == "active").all()
+    elif status == "completed":
+        sessions = query.filter(ExamSession.status.in_(["submitted", "timed_out"])).all()
+    elif status == "all":
+        sessions = query.all()
+    else:
+        # Default to submitted/timed_out for backward compatibility with examiner dashboard
+        sessions = query.filter(ExamSession.status.in_(["submitted", "timed_out"])).all()
+        
     results = []
     for s in sessions:
+        # Check subjective evaluation status
+        needs_grading = False
+        has_subjective = False
+        if s.subjective_evaluations:
+            has_subjective = True
+            needs_grading = any(not ev.is_graded for ev in s.subjective_evaluations)
+            
         results.append({
             "session_id": s.id,
             "student_username": s.student.username,
@@ -30,7 +47,9 @@ def get_submissions(db: Session = Depends(get_db)):
             "status": s.status,
             "final_score": s.final_score,
             "proctoring_suspicion_score": s.proctoring_suspicion_score,
-            "total_points": sum(q.points for q in db.query(Question).filter(Question.subject_id == s.exam.subject_id).all())
+            "total_points": sum(q.points for q in db.query(Question).filter(Question.subject_id == s.exam.subject_id).all()),
+            "has_subjective": has_subjective,
+            "needs_grading": needs_grading
         })
     return results
 

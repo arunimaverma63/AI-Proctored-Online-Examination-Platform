@@ -124,7 +124,7 @@ export const proctorApi = {
 
 // Examiner Grading endpoints
 export const gradingApi = {
-  getSubmissions: () => api.get('/grading/submissions'),
+  getSubmissions: (status) => api.get('/grading/submissions', { params: status ? { status } : {} }),
   getSubmissionDetails: (sessionId) => api.get(`/grading/submission/${sessionId}`),
   submitGrade: (evaluationId, examinerScore, examinerFeedback, annotations = null) => 
     api.post('/grading/evaluate', {

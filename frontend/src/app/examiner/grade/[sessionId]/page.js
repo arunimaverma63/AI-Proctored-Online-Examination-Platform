@@ -14,6 +14,15 @@ export default function GradingPage() {
   const router = useRouter();
   const sessionId = params.sessionId;
 
+  const handleBack = () => {
+    const role = typeof window !== 'undefined' ? localStorage.getItem('role') : '';
+    if (role === 'admin') {
+      router.push('/admin');
+    } else {
+      router.push('/examiner');
+    }
+  };
+
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -114,7 +123,7 @@ export default function GradingPage() {
             <h2>Error Loading Details</h2>
             <p>{error || 'Session not found.'}</p>
           </div>
-          <button onClick={() => router.push('/examiner')} className="btn-secondary" style={{ marginTop: '2rem' }}>
+          <button onClick={handleBack} className="btn-secondary" style={{ marginTop: '2rem' }}>
             <ArrowLeft size={16} /> Back to Dashboard
           </button>
         </div>
@@ -129,7 +138,7 @@ export default function GradingPage() {
         
         {/* Back navigation & Title */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <button onClick={() => router.push('/examiner')} className="btn-secondary" style={{ display: 'flex', gap: '0.4rem', padding: '0.5rem 1rem' }}>
+          <button onClick={handleBack} className="btn-secondary" style={{ display: 'flex', gap: '0.4rem', padding: '0.5rem 1rem' }}>
             <ArrowLeft size={16} /> Back
           </button>
           

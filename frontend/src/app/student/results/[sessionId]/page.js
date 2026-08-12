@@ -14,6 +14,17 @@ export default function StudentResultsPage() {
   const router = useRouter();
   const sessionId = params.sessionId;
 
+  const handleBack = () => {
+    const role = typeof window !== 'undefined' ? localStorage.getItem('role') : '';
+    if (role === 'admin') {
+      router.push('/admin');
+    } else if (role === 'examiner') {
+      router.push('/examiner');
+    } else {
+      router.push('/student');
+    }
+  };
+
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -125,7 +136,7 @@ export default function StudentResultsPage() {
             <h2>Results Unavailable</h2>
             <p>{error || 'Your exam might be in queue for evaluation. Please check back shortly.'}</p>
           </div>
-          <button onClick={() => router.push('/student')} className="btn-secondary" style={{ marginTop: '2rem' }}>
+          <button onClick={handleBack} className="btn-secondary" style={{ marginTop: '2rem' }}>
             <ArrowLeft size={16} /> Back to Dashboard
           </button>
         </div>
@@ -176,7 +187,7 @@ export default function StudentResultsPage() {
         
         {/* Back Button */}
         <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '2rem' }}>
-          <button onClick={() => router.push('/student')} className="btn-secondary" style={{ display: 'flex', gap: '0.4rem', padding: '0.5rem 1rem' }}>
+          <button onClick={handleBack} className="btn-secondary" style={{ display: 'flex', gap: '0.4rem', padding: '0.5rem 1rem' }}>
             <ArrowLeft size={16} /> Back to Dashboard
           </button>
         </div>

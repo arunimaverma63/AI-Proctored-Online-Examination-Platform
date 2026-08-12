@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '../components/Navbar';
 import { useLanguage } from '../components/LanguageContext';
-import { subjectApi, questionApi, examApi } from '../../api';
+import { subjectApi, questionApi, examApi, gradingApi, studentApi } from '../../api';
 import { 
   BookOpen, HelpCircle, Calendar, Plus, Trash2, ShieldAlert, Award, 
   Activity, TrendingUp, AlertTriangle, CheckCircle, Clock, ArrowRight, 
@@ -20,6 +20,15 @@ export default function AdminPage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // New admin visibility states
+  const [submissions, setSubmissions] = useState([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [activeSessionsLoading, setActiveSessionsLoading] = useState(false);
+  const [studentExams, setStudentExams] = useState([]);
+  const [studentExamsLoading, setStudentExamsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Subjects state
   const [subjects, setSubjects] = useState([]);
@@ -49,19 +58,72 @@ export default function AdminPage() {
   const [exStart, setExStart] = useState('');
   const [exEnd, setExEnd] = useState('');
 
+  const fetchActiveSessions = async () => {
+    try {
+      setActiveSessionsLoading(true);
+      const res = await gradingApi.getSubmissions('active');
+      setActiveSessions(res.data);
+    } catch (err) {
+      console.error('Failed to fetch active sessions:', err);
+    } finally {
+      setActiveSessionsLoading(false);
+    }
+  };
+
+  const fetchSubmissions = async () => {
+    try {
+      setSubmissionsLoading(true);
+      const res = await gradingApi.getSubmissions('completed');
+      setSubmissions(res.data);
+    } catch (err) {
+      console.error('Failed to fetch submissions:', err);
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  };
+
+  const fetchStudentExams = async () => {
+    try {
+      setStudentExamsLoading(true);
+      const res = await studentApi.getExamsList();
+      setStudentExams(res.data);
+    } catch (err) {
+      console.error('Failed to fetch student exams:', err);
+    } finally {
+      setStudentExamsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
     fetchDashboardStats();
+    fetchActiveSessions();
+    fetchSubmissions();
+    fetchStudentExams();
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'dashboard') return;
+    if (activeTab === 'dashboard') {
+      const interval = setInterval(() => {
+        fetchDashboardStats();
+      }, 5000);
+      return () => clearInterval(interval);
+    } else if (activeTab === 'live_monitor') {
+      const interval = setInterval(() => {
+        fetchActiveSessions();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
 
-    const interval = setInterval(() => {
-      fetchDashboardStats();
-    }, 5000);
-
-    return () => clearInterval(interval);
+  useEffect(() => {
+    if (activeTab === 'live_monitor') {
+      fetchActiveSessions();
+    } else if (activeTab === 'grading') {
+      fetchSubmissions();
+    } else if (activeTab === 'student_view') {
+      fetchStudentExams();
+    }
   }, [activeTab]);
 
   const showFeedback = (msg, isSuccess = true) => {
@@ -354,34 +416,55 @@ export default function AdminPage() {
         )}
 
         {/* Tabs navigation */}
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveTab('dashboard')}
             className={activeTab === 'dashboard' ? 'btn-primary' : 'btn-secondary'}
-            style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
           >
-            <Activity size={18} /> {t('Dashboard')}
+            <Activity size={16} /> {t('Dashboard')}
+          </button>
+          <button
+            onClick={() => setActiveTab('live_monitor')}
+            className={activeTab === 'live_monitor' ? 'btn-primary' : 'btn-secondary'}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
+          >
+            <Play size={16} style={{ color: 'var(--accent-cyan)' }} /> {t('Live Monitor')}
+          </button>
+          <button
+            onClick={() => setActiveTab('grading')}
+            className={activeTab === 'grading' ? 'btn-primary' : 'btn-secondary'}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
+          >
+            <Award size={16} style={{ color: 'var(--accent-purple)' }} /> {t('Grading Queue')}
+          </button>
+          <button
+            onClick={() => setActiveTab('student_view')}
+            className={activeTab === 'student_view' ? 'btn-primary' : 'btn-secondary'}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
+          >
+            <UserCheck size={16} style={{ color: 'var(--accent-emerald)' }} /> {t('Student View')}
           </button>
           <button
             onClick={() => setActiveTab('subjects')}
             className={activeTab === 'subjects' ? 'btn-primary' : 'btn-secondary'}
-            style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
           >
-            <BookOpen size={18} /> {t('Subjects')}
+            <BookOpen size={16} /> {t('Subjects')}
           </button>
           <button
             onClick={() => setActiveTab('questions')}
             className={activeTab === 'questions' ? 'btn-primary' : 'btn-secondary'}
-            style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
           >
-            <HelpCircle size={18} /> {t('Question Bank')}
+            <HelpCircle size={16} /> {t('Question Bank')}
           </button>
           <button
             onClick={() => setActiveTab('exams')}
             className={activeTab === 'exams' ? 'btn-primary' : 'btn-secondary'}
-            style={{ flex: 1, display: 'flex', gap: '0.5rem' }}
+            style={{ flex: '1 0 calc(12.5% - 0.5rem)', display: 'flex', gap: '0.4rem', fontSize: '0.85rem', padding: '0.6rem 0.8rem', justifyContent: 'center' }}
           >
-            <Calendar size={18} /> {t('Exams Scheduler')}
+            <Calendar size={16} /> {t('Exams Scheduler')}
           </button>
         </div>
 
@@ -931,6 +1014,343 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Live Monitor Tab */}
+        {activeTab === 'live_monitor' && (
+          <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', textAlign: 'left' }}>
+                  <Play size={20} className="animate-pulse" style={{ color: 'var(--accent-cyan)' }} />
+                  Live Examinees & Monitoring Console
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.2rem', textAlign: 'left' }}>
+                  Real-time exam tracking with screen focus metrics and automated proctoring alerts.
+                </p>
+              </div>
+              <button onClick={fetchActiveSessions} className="btn-secondary" style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <RefreshCw size={14} className={activeSessionsLoading ? 'animate-spin' : ''} /> {t('Refresh Live Data')}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '7fr 3fr', gap: '2rem' }}>
+              {/* Active Sessions List */}
+              <div className="glass-panel" style={{ padding: '2rem' }}>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem', textAlign: 'left' }}>
+                  Active Sessions ({activeSessions.length})
+                </h4>
+
+                <div style={{ overflowX: 'auto' }}>
+                  {activeSessionsLoading && activeSessions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
+                      <RefreshCw className="animate-spin" size={24} style={{ display: 'inline', marginRight: '0.5rem' }} />
+                      Loading live sessions...
+                    </div>
+                  ) : activeSessions.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
+                      No students are currently taking exams.
+                    </div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
+                          <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>STUDENT</th>
+                          <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>EXAM TITLE</th>
+                          <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>START TIME</th>
+                          <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>PROCTOR ALERTS</th>
+                          <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'right' }}>ACTION</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeSessions.map((session, i) => {
+                          const isSusp = session.proctoring_suspicion_score >= 40;
+                          const badgeClass = isSusp ? 'badge badge-rose' : 'badge badge-emerald';
+                          return (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                              <td style={{ padding: '1rem 1.25rem' }}>
+                                <span style={{ fontWeight: '700' }}>{session.student_username}</span>
+                              </td>
+                              <td style={{ padding: '1rem 1.25rem' }}>
+                                <span style={{ fontWeight: '500', display: 'block' }}>{session.exam_title}</span>
+                                <span className="badge badge-purple" style={{ fontSize: '0.65rem', marginTop: '0.2rem' }}>{session.subject_name}</span>
+                              </td>
+                              <td style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                {new Date(session.start_time).toLocaleString()}
+                              </td>
+                              <td style={{ padding: '1rem 1.25rem' }}>
+                                <span className={badgeClass} style={{ display: 'inline-flex', gap: '0.2rem', alignItems: 'center' }}>
+                                  <ShieldAlert size={12} /> suspicion: {session.proctoring_suspicion_score}%
+                                </span>
+                              </td>
+                              <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
+                                <button
+                                  onClick={() => router.push(`/examiner/grade/${session.session_id}`)}
+                                  className="btn-primary"
+                                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))', color: '#060913' }}
+                                >
+                                  Monitor Live
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              {/* Live Alerts Side-panel */}
+              <div className="glass-panel" style={{ padding: '1.5rem', textAlign: 'left', background: 'rgba(244, 63, 94, 0.01)', border: '1px solid rgba(244, 63, 94, 0.1)' }}>
+                <h4 style={{ fontSize: '1rem', fontWeight: '700', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-rose)' }}>
+                  <ShieldAlert size={18} />
+                  Live Proctor Violations
+                </h4>
+
+                {displayStats.alerts.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '2rem 0', textAlign: 'center' }}>
+                    No proctoring violation alerts logged recently.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '450px', overflowY: 'auto' }}>
+                    {displayStats.alerts.map((a, idx) => (
+                      <div key={a.id || idx} style={{ display: 'flex', gap: '0.5rem', paddingBottom: '0.8rem', borderBottom: '1px solid rgba(255, 255, 255, 0.03)' }}>
+                        <div style={{ color: 'var(--accent-rose)', marginTop: '0.15rem' }}><ShieldAlert size={14} /></div>
+                        <div style={{ fontSize: '0.8rem' }}>
+                          <span style={{ fontWeight: '700', display: 'block', textTransform: 'uppercase', color: 'var(--accent-rose)', fontSize: '0.75rem' }}>
+                            {a.event_type ? a.event_type.replace('_', ' ') : ''}
+                          </span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>{a.student_username}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}> ({a.exam_title}): </span>
+                          <span style={{ color: 'var(--text-muted)' }}>{a.description}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Grading Queue Tab */}
+        {activeTab === 'grading' && (
+          <div className="glass-panel animate-fade-in" style={{ padding: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0 }}>Grading Submissions Console</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.2rem' }}>
+                  Review completed papers, check AI-suggested marks, verify other examiners' submissions, and override final scores.
+                </p>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ position: 'relative', width: '320px' }}>
+                  <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
+                    <Search size={16} />
+                  </span>
+                  <input
+                    type="text"
+                    className="glass-input"
+                    placeholder="Search student, exam or subject..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ paddingLeft: '2.5rem', height: '38px', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <button onClick={fetchSubmissions} className="btn-secondary" style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  <RefreshCw size={14} className={submissionsLoading ? 'animate-spin' : ''} /> {t('Refresh')}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              {submissionsLoading && submissions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
+                  <RefreshCw className="animate-spin" size={24} style={{ display: 'inline', marginRight: '0.5rem' }} />
+                  Loading submissions...
+                </div>
+              ) : submissions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
+                  No submission records found.
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-glass)', background: 'rgba(255,255,255,0.01)' }}>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>STUDENT</th>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>EXAM TITLE</th>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>DATE COMPLETED</th>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>PROCTOR VIOLATIONS</th>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>GRADING STATE</th>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)' }}>FINAL GRADE</th>
+                      <th style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-secondary)', textAlign: 'right' }}>ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {submissions
+                      .filter(sub => 
+                        sub.student_username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        sub.exam_title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        sub.subject_name.toLowerCase().includes(searchQuery.toLowerCase())
+                      )
+                      .map((sub, i) => {
+                        const getsSusp = sub.proctoring_suspicion_score;
+                        let suspicionBadge = <span className="badge badge-emerald">Safe ({getsSusp})</span>;
+                        if (getsSusp >= 40) suspicionBadge = <span className="badge badge-rose">Critical ({getsSusp})</span>;
+                        else if (getsSusp >= 20) suspicionBadge = <span className="badge badge-amber">Medium ({getsSusp})</span>;
+
+                        let gradingBadge = <span className="badge badge-emerald">Graded</span>;
+                        if (sub.has_subjective && sub.needs_grading) {
+                          gradingBadge = <span className="badge badge-amber">Needs Grading</span>;
+                        } else if (sub.has_subjective) {
+                          gradingBadge = <span className="badge badge-emerald">Fully Graded</span>;
+                        } else {
+                          gradingBadge = <span className="badge badge-cyan">Auto-Graded</span>;
+                        }
+
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              <span style={{ fontWeight: '700' }}>{sub.student_username}</span>
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              <span style={{ fontWeight: '500', display: 'block' }}>{sub.exam_title}</span>
+                              <span className="badge badge-purple" style={{ fontSize: '0.65rem', marginTop: '0.2rem' }}>{sub.subject_name}</span>
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              {new Date(sub.start_time).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              {suspicionBadge}
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              {gradingBadge}
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem' }}>
+                              <span style={{ fontWeight: '700', color: 'var(--accent-cyan)' }}>
+                                {sub.final_score !== null ? `${sub.final_score} / ${sub.total_points}` : `Needs grading (${sub.total_points} pts)`}
+                              </span>
+                            </td>
+                            <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
+                              <button
+                                onClick={() => router.push(`/examiner/grade/${sub.session_id}`)}
+                                className="btn-primary"
+                                style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                              >
+                                <Edit3 size={12} style={{ display: 'inline', marginRight: '0.2rem' }} /> Grade & Review
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Student Dashboard Preview Tab */}
+        {activeTab === 'student_view' && (
+          <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <div className="glass-panel" style={{
+              padding: '2rem',
+              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(59, 130, 246, 0.1) 100%)',
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.4rem', fontWeight: '800', margin: 0 }}>Student Examination Portal (Admin Preview Mode)</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '0.2rem', maxWidth: '700px' }}>
+                    This panel displays a visual preview of what the student sees on their dashboard. Actions like starting exams are disabled for administration safety, but results and schedules are live.
+                  </p>
+                </div>
+                <button onClick={fetchStudentExams} className="btn-secondary" style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                  <RefreshCw size={14} className={studentExamsLoading ? 'animate-spin' : ''} /> {t('Refresh Portal')}
+                </button>
+              </div>
+            </div>
+
+            <h4 style={{ fontSize: '1.2rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem', textAlign: 'left' }}>
+              <Clock size={20} style={{ color: 'var(--accent-cyan)' }} />
+              Scheduled Student Examinations
+            </h4>
+
+            {studentExamsLoading && studentExams.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+                Loading examinations preview...
+              </div>
+            ) : studentExams.length === 0 ? (
+              <div className="glass-card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+                No exams scheduled for students at this time.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
+                {studentExams.map((ex, i) => {
+                  let statusBadge = <span className="badge badge-purple">{t('Scheduled')}</span>;
+                  if (ex.status === 'available') statusBadge = <span className="badge badge-cyan">{t('Available')}</span>;
+                  else if (ex.status === 'submitted' || ex.status === 'timed_out' || ex.status === 'active') statusBadge = <span className="badge badge-emerald">{t('Submitted')}</span>;
+                  else if (ex.status === 'expired') statusBadge = <span className="badge badge-rose">{t('Expired')}</span>;
+
+                  return (
+                    <div key={i} className="glass-card" style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      padding: '1.5rem',
+                      gap: '1.5rem',
+                      textAlign: 'left'
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                          <span className="badge badge-purple" style={{ display: 'flex', gap: '0.2rem' }}>
+                            <BookOpen size={12} /> {ex.subject_name}
+                          </span>
+                          {statusBadge}
+                        </div>
+                        
+                        <h5 style={{ fontSize: '1.25rem', fontWeight: '800', margin: '0 0 0.5rem 0' }}>{ex.exam_title}</h5>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <Clock size={14} /> Duration: {ex.duration_minutes} minutes
+                          </div>
+                          <div>
+                            <strong>Scheduled:</strong> {new Date(ex.start_time).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                        {ex.status === 'available' && (
+                          <button disabled className="btn-secondary" style={{ width: '100%', opacity: 0.6, cursor: 'not-allowed' }}>
+                            <Play size={16} /> Start Exam (Student Only)
+                          </button>
+                        )}
+                        {(ex.status === 'submitted' || ex.status === 'timed_out' || ex.status === 'active') && (
+                          <button onClick={() => router.push(`/student/results/${ex.session_id}`)} className="btn-secondary" style={{ width: '100%', display: 'flex', gap: '0.5rem', color: 'var(--accent-cyan)' }}>
+                            <CheckCircle size={16} /> View Score & Feedback <ArrowRight size={16} />
+                          </button>
+                        )}
+                        {ex.status === 'scheduled' && (
+                          <button disabled className="btn-secondary" style={{ width: '100%', cursor: 'not-allowed', opacity: 0.6 }}>
+                            Not Started Yet
+                          </button>
+                        )}
+                        {ex.status === 'expired' && (
+                          <button disabled className="btn-secondary" style={{ width: '100%', cursor: 'not-allowed', opacity: 0.6, color: 'var(--accent-rose)' }}>
+                            Exam Window Expired
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
