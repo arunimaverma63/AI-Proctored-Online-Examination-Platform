@@ -131,20 +131,9 @@ The platform uses **SQLAlchemy** to manage seven interlinked tables:
    pip install -r requirements.txt
    ```
 
-3. **Configure Environment Variables**:
-   Create a `.env` file in the `backend/` folder:
-   ```env
-   # PostgreSQL connection string (defaults to SQLite if not provided or starting with sqlite)
-   DATABASE_URL=postgresql://postgres:0000@localhost:5432/proctoredexam
-
-   # Secret JWT generation key
-   SECRET_KEY=df179eef3bf45d2e389d311fa904724b17b2b8e3a5df67c83c2763f03bda9e17
-
-   # Gemini API Key (optional but recommended for AI features)
-   GEMINI_API_KEY=YOUR_GEMINI_API_KEY
    ```
 
-4. **Start the API Server**:
+3. **Start the API Server**:
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -153,7 +142,7 @@ The platform uses **SQLAlchemy** to manage seven interlinked tables:
    - **Student**: `student` / `student123`
    - **Examiner**: `examiner` / `examiner123`
 
-5. **API Documentation**:
+4. **API Documentation**:
    Once running, you can explore the interactive API docs at [http://localhost:8000/docs](http://localhost:8000/docs).
 
 ---
